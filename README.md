@@ -1,0 +1,63 @@
+# ECDSA Research: Research on Elliptic Curve Digital Signature Algorithm
+
+## 🔍 Overview
+
+This paper investigates the possibility of complete private key inversion based on certain anomalies in individual transactions or group transactions signed with a shared private key that satisfy special algebraic conditions when one of the modular factors is known and the other factor needs to be found, which should provide algorithmic recovery of the private key of these transactions in polynomial time.
+
+NOTICE!
+This work is in the stage of active development and research; therefore, some sections of this repository are incomplete, and documentation may be unavailable at this stage.
+
+## 📁 Structure
+
+```markdown
+ECDLP-Research/
+├── README.md
+├── LICENSE
+├── src/
+|   ├── ecurve/
+│   │   ├── find_curve.sage                  # Script to find test elliptic curve parameters
+│   │   ├── secp256k1.py                     # Advanced script to generate pairs of keys (private and public) based on 'secp256k1'
+│   │   └── secp256k1.txt                    # The result of the work 'secp256k1.py' script
+|   ├── utils/
+│   │   ├── generate_transactions.py         # Script to generate sentetic transactions into local TXT file
+│   │   ├── ...
+│   │   └── ...
+├── data/
+│   ├── instructions.txt                     # The description of instructions on how to use the 'data' section
+│   ├── transaction_list_20251102140509.txt  # Transaction list for test small curve (~100M transactions)
+│   ├── transaction_list_20251102141147.txt  # Transaction list for test large curve (~1M transactions)
+│   ├── transaction_list_20251102143145.txt  # Transaction list for legace curve (~100K transactions)
+│   └── ...
+└── docs/
+    ├── description.txt                      # Temporary description of the purpose of the 'docs' section
+    ├── ...
+    └── ...
+```
+
+## 📘 Link
+
+This work was inspired by the author's previous research on detecting algebraic anomalies in ECDSA transactions and modular remainders. You can read the corresponding publication through the following links:
+
+```markdown
+https://doi.org/10.6084/m9.figshare.29223701
+https://doi.org/10.21203/rs.3.rs-6790872/v1
+```
+
+## 🔗 License
+
+Released under MIT License (see LICENSE file).
+
+## 🚀 Quick Start
+
+Clone the repository and run the transaction generator:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/ECDSA-Research.git
+cd ECDSA-Research/
+```
+
+## 🔍 Project on JIRA
+
+Tracking and monitoring tasks related to the current project can be found here:
+
+[![Go to JIRA](https://img.shields.io/badge/JIRA-Visit-blue)](https://cryptonsystemslab.atlassian.net/jira/core/projects/CSL/board?filter=&groupBy=status&atlOrigin=eyJpIjoiZWYwNGI4ODlhYmZjNDdkNGIwMGM3NWUwNzk0MTBjNGYiLCJwIjoiaiJ9)
