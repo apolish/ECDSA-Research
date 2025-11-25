@@ -13,7 +13,7 @@ from collections import defaultdict
 
 try:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from ecurve.secp256k1 import Secp256k1, TEST_PARAMS, LEGACY_PARAMS  # type: ignore
+    from ecurve.secp256k1 import Secp256k1, TEST_PARAMS_LARGE, LEGACY_PARAMS  # type: ignore
 except Exception as exc:  # pragma: no cover
     raise ImportError(
         "Failed to import local 'secp256k1.py'. "
@@ -99,7 +99,7 @@ def find_common_x_any(
         raise ValueError("The same 'mode' is expected for all transactions.")
 
     getcontext().prec = 20 if curve_mode == "test" else 80
-    ec = Secp256k1(TEST_PARAMS if curve_mode == "test" else LEGACY_PARAMS)
+    ec = Secp256k1(TEST_PARAMS_LARGE if curve_mode == "test" else LEGACY_PARAMS)
     n = ec.curve.n
 
     # Generate candidates s_zk for each transaction
