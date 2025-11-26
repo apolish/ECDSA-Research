@@ -210,7 +210,7 @@ def _collect_rows(
             if s_zr > s:
                 q = (s_zr - s) % curve.n
                 a = s % q if q != 0 else 0
-                if a > 1 and a != s and a == (s_zr % q):
+                if a > 1 and a != s and a == (s_zr % q): # Scanning mechanism for test/real blockchain data when total cases = cases count (A + B + C + D)
                     total_cases += 1
                     # hidden data analysis
                     s_zk = (z * k_inv) % curve.n
