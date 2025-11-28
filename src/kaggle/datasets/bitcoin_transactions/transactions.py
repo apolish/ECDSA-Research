@@ -4,19 +4,13 @@
 from __future__ import annotations
 
 import argparse
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
 from fractions import Fraction
 from typing import Iterable, List, Sequence, Tuple
 import re
-
-try:
-    # Add the path to the parent directory
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from ecurve.secp256k1 import (
+from secp256k1 import (
         Secp256k1,
         TEST_PARAMS_SMALL,
         TEST_PARAMS_LARGE,
@@ -24,12 +18,6 @@ try:
         CurveParams,
         make_bitcoin_legacy_sighash_message,
     )
-except Exception as exc:  # pragma: no cover
-    raise ImportError(
-        "Failed to import local 'secp256k1.py'. "
-        "Make sure the file is in the same directory."
-    ) from exc
-
 
 @dataclass(frozen=True)
 class ReportConfig:

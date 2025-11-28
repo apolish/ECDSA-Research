@@ -22,11 +22,12 @@ ECDLP-Research/
 │   │   ├── generate_transactions.py         # Script to generate sentetic transactions into local TXT file
 │   │   ├── ...
 │   │   └── ...
+|   └── kaggle/                              # Kaggle's notebooks, datasets, etc. for large-scale computing experiments
 ├── data/
 │   ├── instructions.txt                     # The description of instructions on how to use the 'data' section
-│   ├── transaction_list_20251102140509.txt  # Transaction list for test small curve (~100M transactions)
-│   ├── transaction_list_20251102141147.txt  # Transaction list for test large curve (~1M transactions)
-│   ├── transaction_list_20251128130612.txt  # Transaction list for legace curve (~100K transactions)
+│   ├── transaction_list_20251128204706.txt  # Transaction list for test small curve (~1M transactions)
+│   ├── transaction_list_20251128200450.txt  # Transaction list for test large curve (~1M transactions)
+│   ├── transaction_list_20251128205548.txt  # Transaction list for legace curve (~100K transactions)
 │   └── ...
 └── docs/
     ├── description.txt                      # Temporary description of the purpose of the 'docs' section
