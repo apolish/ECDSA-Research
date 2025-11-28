@@ -61,3 +61,5 @@ cd ECDSA-Research/
 Tracking and monitoring tasks related to the current project can be found here:
 
 [![Go to JIRA](https://img.shields.io/badge/JIRA-Visit-blue)](https://cryptonsystemslab.atlassian.net/jira/core/projects/CSL/board?filter=&groupBy=status&atlOrigin=eyJpIjoiZWYwNGI4ODlhYmZjNDdkNGIwMGM3NWUwNzk0MTBjNGYiLCJwIjoiaiJ9)
+
+### STATUS: Active!
