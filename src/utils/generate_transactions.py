@@ -16,7 +16,14 @@ import re
 try:
     # Add the path to the parent directory
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from ecurve.secp256k1 import Secp256k1, TEST_PARAMS_SMALL, TEST_PARAMS_LARGE, LEGACY_PARAMS, CurveParams  # type: ignore
+    from ecurve.secp256k1 import (
+        Secp256k1,
+        TEST_PARAMS_SMALL,
+        TEST_PARAMS_LARGE,
+        LEGACY_PARAMS,
+        CurveParams,
+        make_bitcoin_legacy_sighash_message,
+    )
 except Exception as exc:  # pragma: no cover
     raise ImportError(
         "Failed to import local 'secp256k1.py'. "
@@ -67,7 +74,11 @@ def _print_once_demo(ec: Secp256k1) -> None:
     print(f"Spent time: {time.time() - t0:.3f} sec.\n")
 
     t0 = time.time()
-    sig = ec.sign_message(pk, b"Hello, secp256k1!")
+    if ec.curve.mode == "legacy":
+        message = make_bitcoin_legacy_sighash_message(pub)
+    else:
+        message = b"Hello, secp256k1!"
+    sig = ec.sign_message(pk, message)
     z, r, s, k_inv = sig
     print("Signature parameters:")
     print(f"  z:   {hex(z)[2:]}")
@@ -199,9 +210,12 @@ def _collect_rows(
             continue
 
         for _ in range(transaction_limit_per_key):
-            # message as random scalar in [1, n-1)
-            rnd = random.randrange(1, curve.n - 1)
-            msg = str(rnd).encode()
+            # message generation
+            if curve.mode == "legacy":
+                msg = make_bitcoin_legacy_sighash_message(public_key)
+            else:
+                rnd = random.randrange(1, curve.n - 1)
+                msg = str(rnd).encode()
 
             z, r, s, k_inv = ec.sign_message(private_key, msg)
 
