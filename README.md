@@ -2,7 +2,7 @@
 
 ## 🔍 Overview
 
-This paper investigates the possibility of complete private key inversion based on certain anomalies in individual transactions or group transactions signed with a shared private key that satisfy special algebraic conditions when one of the modular factors is known and the other factor needs to be found, which should provide algorithmic recovery of the private key of these transactions in polynomial time.
+This paper investigates algebraic anomalies in ECDSA signatures that enable deterministic private-key recovery under ideal-randomness assumptions about the "k" nonce. We describe two classes of vulnerabilities (Case A and Case B), supported by analytical formulas, simulations, and experimental transaction datasets for small test elliptic curves. Additionally, work is underway to develop a mathematical framework for deterministic private-key recovery for a class of vulnerabilities (Case D), which is observed in 25% of ECDSA signatures on the real elliptic curve "secp256k1".
 
 NOTICE!
 This work is in the stage of active development and research; therefore, some sections of this repository are incomplete, and documentation may be unavailable at this stage.
