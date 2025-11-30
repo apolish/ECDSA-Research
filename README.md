@@ -27,7 +27,9 @@ ECDLP-Research/
 │   ├── instructions.txt                     # The description of instructions on how to use the 'data' section
 │   ├── transaction_list_20251128204706.txt  # Transaction list for test small curve (~1M transactions)
 │   ├── transaction_list_20251128200450.txt  # Transaction list for test large curve (~1M transactions)
-│   ├── transaction_list_20251128205548.txt  # Transaction list for legace curve (~100K transactions)
+│   ├── transaction_list_20251128205548.txt  # Transaction list for legacy curve (~100K transactions)
+│   ├── transaction_list_20251129013753.txt  # Transaction list for test large curve (~1000 transactions for one common private key)
+│   ├── transaction_list_20251130124755.txt  # Transaction list for test small curve (~1000 transactions for one common private key)
 │   └── ...
 └── docs/
     ├── description.txt                      # Temporary description of the purpose of the 'docs' section

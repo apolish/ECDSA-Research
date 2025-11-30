@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -11,13 +13,14 @@ from fractions import Fraction
 from typing import Iterable, List, Sequence, Tuple
 import re
 from secp256k1 import (
-        Secp256k1,
-        TEST_PARAMS_SMALL,
-        TEST_PARAMS_LARGE,
-        LEGACY_PARAMS,
-        CurveParams,
-        make_bitcoin_legacy_sighash_message,
-    )
+    Secp256k1,
+    TEST_PARAMS_SMALL,
+    TEST_PARAMS_LARGE,
+    LEGACY_PARAMS,
+    CurveParams,
+    make_bitcoin_legacy_sighash_message,
+)
+
 
 @dataclass(frozen=True)
 class ReportConfig:
@@ -165,6 +168,7 @@ def _collect_rows(
     ec: Secp256k1,
     cfg: ReportConfig,
     total_key_count: int,
+    private_key: int,
     transaction_limit_per_key: int,
     output_count: int,
 ) -> Tuple[List[Sequence[object]], dict]:
@@ -175,9 +179,12 @@ def _collect_rows(
     start = time.time()
 
     # key pool
-    range_start = 1
-    range_end = curve.n - 1
-    uniq_keys = ec.generate_unique_keys(total_key_count, range_start, range_end)
+    if private_key != 0 and private_key < curve.n:
+        uniq_keys = [private_key]
+    else:
+        range_start = 1
+        range_end = curve.n - 1
+        uniq_keys = ec.generate_unique_keys(total_key_count, range_start, range_end)
 
     rows: List[Sequence[object]] = []
 
@@ -301,6 +308,7 @@ def _select_curve(mode: str) -> CurveParams:
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="secp256k1 transaction data generator")
     p.add_argument("--mode", choices=["test_small", "test_large", "legacy"], default="test_small", help="Curve mode")
+    p.add_argument("--private_key", type=int, default=0, help="Private key to use (if '0' then random else specific key)")
     p.add_argument("--keys", type=int, default=9965, help="Total unique keys to generate")
     p.add_argument("--tx_per_key", type=int, default=100, help="Transactions per key")
     p.add_argument("--output_count", type=int, default=10000, help="Number of output transactions to generate")
@@ -321,6 +329,7 @@ def main() -> None:
         ec=ec,
         cfg=cfg,
         total_key_count=args.keys,
+        private_key=args.private_key,
         transaction_limit_per_key=args.tx_per_key,
         output_count=args.output_count,
     )

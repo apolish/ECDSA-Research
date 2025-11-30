@@ -1,14 +1,16 @@
------------ Finding common x for all transactions -----------
-s_zk1: [347571496, 355868959], 8297464 attempts
-s_zk2: [193811625, 211430864], 17619240 attempts
-s_zk3: [805643941, 813423765], 7779825 attempts
-s_zk4: [408242210, 419112564], 10870355 attempts
-s_zk5: [255348089, 261136837], 5788749 attempts
-Total attempts (approx): 7.156997e+34
-Match for everyone tx: x = 621753600
-  tx1: s_zk = 348404429, f1 = 3.779034555935622339
-  tx2: s_zk = 194417748, f2 = 0.993096104093818705
-  tx3: s_zk = 805954802, f3 = 9.323596153525576075
-  tx4: s_zk = 408371557, f4 = 3.381070913554393111
-  tx5: s_zk = 255836041, f5 = 3.977586379901634060
-Spent: 123.312 sec.
+----------- Finding common x for all transactions (FULL RANGE) -----------
+s_zk1: levels [33, 34], range [1004456178, 1034894244], 30438067 attempts
+s_zk2: levels [81, 82], range [636846381, 644708682], 7862302 attempts
+s_zk3: levels [6, 7], range [407704050, 475654725], 67950676 attempts
+s_zk4: levels [29, 30], range [744266121, 769930470], 25664350 attempts
+s_zk5: levels [23, 24], range [993918619, 1037132472], 43213854 attempts
+s_zk6: levels [2, 3], range [349510346, 524265519], 174755174 attempts
+Total attempts (theoretical Cartesian product): 3.151693e+45
+Match for all tx: x = 1181877229
+  tx1: s_zk = 1034562047, f1 ≈ 33.989086133133425757
+  tx2: s_zk = 640336279, f2 ≈ 81.443877434862898279
+  tx3: s_zk = 437755120, f3 ≈ 6.4422482926034215260
+  tx4: s_zk = 752717535, f4 ≈ 29.329305605998422169
+  tx5: s_zk = 1033533595, f5 ≈ 23.916719367745338514
+  tx6: s_zk = 400770655, f6 ≈ 2.2933264184402712931
+Spent: 1629.707 sec.

@@ -3,23 +3,13 @@
 
 from __future__ import annotations
 
-import os
-import sys
 import argparse
 from dataclasses import dataclass
 from decimal import Decimal, getcontext
 from time import perf_counter
 from typing import Iterable, List, Optional, Tuple, DefaultDict
 from collections import defaultdict
-
-try:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from ecurve.secp256k1 import Secp256k1, TEST_PARAMS_SMALL, TEST_PARAMS_LARGE, LEGACY_PARAMS
-except Exception as exc:
-    raise ImportError(
-        "Failed to import local 'secp256k1.py'. "
-        "Make sure the file is in the same directory."
-    ) from exc
+from secp256k1 import Secp256k1, TEST_PARAMS_SMALL, TEST_PARAMS_LARGE, LEGACY_PARAMS
 
 
 # ======================================================================
