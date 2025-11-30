@@ -273,7 +273,7 @@ def main() -> None:
             print(f"\nFound common x = {x}")
             for i, (t, szk) in enumerate(zip(txs, chain), 1):
                 fv = Decimal(szk) / Decimal(t.a)
-                print(f"  tx{i}: s_zk = {szk}, f ≈ {str(fv)[:20]}")
+                print(f"  tx{i}: s_zk = {szk}, f = {str(fv)[:20]}")
     else:
         print("\nNo common x found.")
 
