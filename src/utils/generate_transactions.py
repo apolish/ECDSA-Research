@@ -37,7 +37,7 @@ class ReportConfig:
     column_widths: Sequence[int]
     line_length: int
     headers: Sequence[str] = (
-        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k-1", "q", "a", "m1", "m2", "f"
+        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k-1", "a", "m1", "m2", "f"
     )
 
 
@@ -45,13 +45,13 @@ def _build_report_config(curve: CurveParams) -> ReportConfig:
     if curve.mode == "test":
         precision = 20
         getcontext().prec = precision
-        column_widths = [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 25, 25, precision + 5]
-        line_length = 183 + precision + 5
+        column_widths = [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, precision + 5]
+        line_length = 145 + precision + 5
     else:
         precision = 80
         getcontext().prec = precision
-        column_widths = [81, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 191, 191, precision + 5]
-        line_length = 1263 + precision + 5
+        column_widths = [81, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, precision + 5]
+        line_length = 961 + precision + 5
     return ReportConfig(precision=precision, column_widths=column_widths, line_length=line_length)
 
 
@@ -226,9 +226,8 @@ def _collect_rows(
             # public data analysis for case C
             s_zr = (z * r) % curve.n
             if s_zr > s:
-                q = (s_zr - s) % curve.n
-                a = s % q if q != 0 else 0
-                if a < s: # Scanning mechanism for test/real blockchain data. Conditions a < s or a == s
+                a = s % ((s_zr - s) % curve.n)
+                if a != 0 and a != s:
                     total_cases += 1
                     # hidden data analysis
                     s_zk = (z * k_inv) % curve.n
@@ -241,13 +240,13 @@ def _collect_rows(
                             case_B_count += 1
                             if case_B_count <= output_count:
                                 rows.append(
-                                    ["B", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, q, a, m1, m2, "-"]
+                                    ["B", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, m2, "-"]
                                 )
                         else:
                             case_C_count += 1
                             if case_C_count <= output_count:
                                 rows.append(
-                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, q, a, m1, "-", "-"]
+                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-"]
                                 )
                     # A, C cases
                     elif m1.denominator == 1 and m2.denominator != 1:
@@ -255,13 +254,13 @@ def _collect_rows(
                             case_A_count += 1
                             if case_A_count <= output_count:
                                 rows.append(
-                                    ["A", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, q, a, m1, "-", "-"]
+                                    ["A", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-"]
                                 )
                         elif m1 > 1:
                             case_C_count += 1
                             if case_C_count <= output_count:
                                 rows.append(
-                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, q, a, m1, "-", "-"]
+                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-"]
                                 )
                     else:
                         # D case
@@ -277,7 +276,7 @@ def _collect_rows(
                             case_D_counts[digit] = case_D_counts.get(digit, 0) + 1
                             if case_D_count <= output_count:
                                 rows.append(
-                                    [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, q, a, "-", "-", f_str]
+                                    [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
                                 )
 
         if i % progress_step == 0:
@@ -319,8 +318,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--mode", choices=["test_small", "test_large", "legacy"], default="test_small", help="Curve mode")
     p.add_argument("--private_key", type=int, default=0, help="Private key to use (if '0' then random else specific key)")
     p.add_argument("--keys", type=int, default=9965, help="Total unique keys to generate")
-    p.add_argument("--tx_per_key", type=int, default=100, help="Transactions per key")
-    p.add_argument("--output_count", type=int, default=10000, help="Number of output transactions to generate")
+    p.add_argument("--tx_per_key", type=int, default=1, help="Transactions per key")
+    p.add_argument("--output_count", type=int, default=1000, help="Number of output transactions to generate")
     p.add_argument("--demo", action="store_true", help="Run demo of key generation, signing, and verification")
     return p.parse_args(argv)
 
