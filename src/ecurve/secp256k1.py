@@ -27,7 +27,6 @@ class CurveParams:
     g: Tuple[int, int]
     n: int
 
-
 TEST_PARAMS_SMALL = CurveParams(
     name="secp256k1",
     mode="test",
@@ -36,6 +35,16 @@ TEST_PARAMS_SMALL = CurveParams(
     b=22,
     g=(4, 1668),
     n=9967
+)
+
+TEST_PARAMS_MIDDLE = CurveParams(
+    name="secp256k1",
+    mode="test",
+    p=103657,
+    a=0,
+    b=10,
+    g=(2, 97773),
+    n=103183
 )
 
 TEST_PARAMS_LARGE = CurveParams(
@@ -47,7 +56,6 @@ TEST_PARAMS_LARGE = CurveParams(
     g=(311_072_572, 523_565_415),
     n=1_241_630_743
 )
-
 
 LEGACY_PARAMS = CurveParams(
     name="secp256k1",
@@ -371,6 +379,9 @@ def main() -> None:
 
     print("========== TEST CURVE (SMALL) ==========")
     print_curve_run(TEST_PARAMS_SMALL)
+
+    print("========== TEST CURVE (MIDDLE) ==========")
+    print_curve_run(TEST_PARAMS_MIDDLE)
 
     print("========== TEST CURVE (LARGE) ==========")
     print_curve_run(TEST_PARAMS_LARGE)

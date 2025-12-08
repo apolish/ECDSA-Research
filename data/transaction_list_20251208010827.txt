@@ -1,0 +1,129 @@
+Elliptic curve parameters:
+name = secp256k1
+mode = test
+p = 103657
+a = 0
+b = 10
+g = (2, 97773)
+n = 103183
+
+-----------------------------------------------------------------------------------------------
+case  s       s_zk   s_rxk   s_zr    z       r       x       k-1    a      f                   
+-----------------------------------------------------------------------------------------------
+D0    84881   3770   81111   102281  102006  15430   101729  20160  15281  0.246711602643806033
+D0    59607   14076  45531   93084   85149   94790   101729  22794  26130  0.538691159586681974
+D0    75852   8028   67824   98040   85256   78543   101729  32082  9288   0.864341085271317829
+D0    65927   18936  46991   99646   5248    50942   101729  97996  32208  0.587928464977645305
+D0    59952   6382   53570   102889  17708   66252   101729  61148  17015  0.375080811049074346
+D0    42393   5614   36779   66801   91504   62572   101729  56596  17985  0.312149013066444259
+D0    50275   1021   49254   81908   16687   55594   101729  74461  18642  0.054768801630726316
+D0    51565   6493   45072   87069   36619   92137   101729  21663  16061  0.404271215989041778
+D0    33316   11115  22201   50401   4641    1456    101729  26882  16231  0.684800690037582404
+D0    51971   15622  36349   84369   37086   98052   101729  8286   19573  0.798140295304756552
+D0    56618   4313   52305   76817   87823   80600   101729  44007  16220  0.265906288532675709
+D0    15079   100    14979   16284   48559   102344  101729  89998  619    0.161550888529886914
+D0    81955   3549   78406   96835   8879    40208   101729  63149  7555   0.469755129053606882
+D0    26480   58     26422   27464   97497   30373   101729  55856  896    0.064732142857142857
+D0    43913   1979   41934   82043   24087   41980   101729  81096  5783   0.342209925644129344
+D0    38209   108    38101   71039   26369   99347   101729  9720   5379   0.020078081427774679
+D0    67454   420    67034   101476  68570   30365   101729  76127  33432  0.012562814070351758
+-----------------------------------------------------------------------------------------------
+case  s       s_zk   s_rxk   s_zr    z       r       x       k-1    a      f                   
+-----------------------------------------------------------------------------------------------
+
+Statistics:
+
+Total Key Count: 1
+Transaction Limit Per Key: 1000
+Total Transaction Count: 1000
+Total Cases: 261
+Case A Count: 0
+Case B Count: 0
+Case C Count: 0
+Case D Count: 261
+Case D0 Count: 17
+Case D1 Count: 11
+Case D2 Count: 23
+Case D3 Count: 17
+Case D4 Count: 14
+Case D5 Count: 14
+Case D6 Count: 9
+Case D7 Count: 13
+Case D8 Count: 8
+Case D9 Count: 8
+Case D10 Count: 8
+Case D11 Count: 7
+Case D12 Count: 4
+Case D13 Count: 4
+Case D14 Count: 3
+Case D15 Count: 5
+Case D16 Count: 2
+Case D17 Count: 2
+Case D18 Count: 2
+Case D19 Count: 3
+Case D20 Count: 5
+Case D21 Count: 5
+Case D22 Count: 3
+Case D24 Count: 2
+Case D25 Count: 4
+Case D26 Count: 1
+Case D27 Count: 1
+Case D28 Count: 2
+Case D30 Count: 1
+Case D32 Count: 1
+Case D34 Count: 1
+Case D35 Count: 1
+Case D36 Count: 1
+Case D37 Count: 1
+Case D39 Count: 1
+Case D42 Count: 1
+Case D44 Count: 2
+Case D48 Count: 3
+Case D49 Count: 1
+Case D50 Count: 2
+Case D51 Count: 2
+Case D52 Count: 1
+Case D53 Count: 1
+Case D55 Count: 1
+Case D56 Count: 1
+Case D57 Count: 1
+Case D59 Count: 1
+Case D61 Count: 1
+Case D63 Count: 2
+Case D64 Count: 1
+Case D65 Count: 1
+Case D72 Count: 1
+Case D77 Count: 1
+Case D79 Count: 1
+Case D81 Count: 1
+Case D88 Count: 1
+Case D90 Count: 1
+Case D98 Count: 1
+Case D103 Count: 2
+Case D106 Count: 1
+Case D119 Count: 1
+Case D121 Count: 1
+Case D126 Count: 1
+Case D133 Count: 1
+Case D150 Count: 1
+Case D154 Count: 1
+Case D158 Count: 1
+Case D175 Count: 1
+Case D214 Count: 1
+Case D220 Count: 1
+Case D236 Count: 1
+Case D260 Count: 1
+Case D272 Count: 1
+Case D285 Count: 1
+Case D357 Count: 1
+Case D398 Count: 1
+Case D399 Count: 1
+Case D554 Count: 1
+Case D646 Count: 1
+Case D835 Count: 1
+Case D1480 Count: 1
+Case D1565 Count: 1
+Case D2247 Count: 1
+Case D6547 Count: 1
+Case D11597 Count: 1
+Spent time: 0.041 sec.

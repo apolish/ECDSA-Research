@@ -13,13 +13,14 @@ from fractions import Fraction
 from typing import Iterable, List, Sequence, Tuple
 import re
 from secp256k1 import (
-    Secp256k1,
-    TEST_PARAMS_SMALL,
-    TEST_PARAMS_LARGE,
-    LEGACY_PARAMS,
-    CurveParams,
-    make_bitcoin_legacy_sighash_message,
-)
+        Secp256k1,
+        TEST_PARAMS_SMALL,
+        TEST_PARAMS_MIDDLE,
+        TEST_PARAMS_LARGE,
+        LEGACY_PARAMS,
+        CurveParams,
+        make_bitcoin_legacy_sighash_message,
+    )
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,7 @@ def _collect_rows(
     private_key: int,
     transaction_limit_per_key: int,
     output_count: int,
+    d_case_digit: int,
 ) -> Tuple[List[Sequence[object]], dict]:
     import random
     import time
@@ -266,9 +268,14 @@ def _collect_rows(
                                 continue
                             case_D_counts[digit] = case_D_counts.get(digit, 0) + 1
                             if case_D_count <= output_count:
-                                rows.append(
-                                    [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
-                                )
+                                if d_case_digit == -1:
+                                    rows.append(
+                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
+                                    )
+                                elif digit == d_case_digit:
+                                    rows.append(
+                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
+                                    )
 
         if i % progress_step == 0:
             print(f"{i} keys ({i * transaction_limit_per_key} transactions) generated...")
@@ -297,20 +304,23 @@ def _collect_rows(
 def _select_curve(mode: str) -> CurveParams:
     if mode == "test_small":
         return TEST_PARAMS_SMALL
+    if mode == "test_middle":
+        return TEST_PARAMS_MIDDLE
     if mode == "test_large":
         return TEST_PARAMS_LARGE
     if mode == "legacy":
         return LEGACY_PARAMS
-    raise ValueError("Mode must be 'test_small' or 'test_large' or 'legacy'!")
+    raise ValueError("Mode must be 'test_small' or 'test_middle' or 'test_large' or 'legacy'!")
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="secp256k1 transaction data generator")
-    p.add_argument("--mode", choices=["test_small", "test_large", "legacy"], default="test_small", help="Curve mode")
+    p.add_argument("--mode", choices=["test_small", "test_middle", "test_large", "legacy"], default="test_small", help="Curve mode: test_small, test_middle, test_large or legacy.")
     p.add_argument("--private_key", type=int, default=0, help="Private key to use (if '0' then random else specific key)")
     p.add_argument("--keys", type=int, default=9965, help="Total unique keys to generate")
     p.add_argument("--tx_per_key", type=int, default=1, help="Transactions per key")
     p.add_argument("--output_count", type=int, default=1000, help="Number of output transactions to generate")
+    p.add_argument("--d_case_digit", type=int, default=-1, help="Digit for filtering case D (if -1 then all)")
     p.add_argument("--demo", action="store_true", help="Run demo of key generation, signing, and verification")
     return p.parse_args(argv)
 
@@ -331,6 +341,7 @@ def main() -> None:
         private_key=args.private_key,
         transaction_limit_per_key=args.tx_per_key,
         output_count=args.output_count,
+        d_case_digit=args.d_case_digit,
     )
     path = _write_report(curve, cfg, rows, stats)
     print(f"Wrote report: {path}")

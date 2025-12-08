@@ -14,7 +14,7 @@ from collections import defaultdict
 
 try:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from ecurve.secp256k1 import Secp256k1, TEST_PARAMS_SMALL, TEST_PARAMS_LARGE, LEGACY_PARAMS
+    from ecurve.secp256k1 import Secp256k1, TEST_PARAMS_SMALL, TEST_PARAMS_MIDDLE, TEST_PARAMS_LARGE, LEGACY_PARAMS
 except Exception as exc:
     raise ImportError(
         "Failed to import local 'secp256k1.py'. "
@@ -42,7 +42,6 @@ class ECDSATransaction:
     r: int
     x: int
     k_inv: int
-    q: int
     a: int
     f: float
 
@@ -160,9 +159,11 @@ def find_common_x_any(
     # Select curve mode
     if curve_mode == "test_small":
         ec = Secp256k1(TEST_PARAMS_SMALL)
+    elif curve_mode == "test_middle":
+        ec = Secp256k1(TEST_PARAMS_MIDDLE)
     elif curve_mode == "test_large":
         ec = Secp256k1(TEST_PARAMS_LARGE)
-    else:
+    elif curve_mode == "legacy":
         ec = Secp256k1(LEGACY_PARAMS)
     n = ec.curve.n
 
@@ -227,9 +228,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--curve-mode",
-        choices=["test_small", "test_large", "legacy"],
+        choices=["test_small", "test_middle", "test_large", "legacy"],
         default="test_small",
-        help="Select EC curve mode: test_small, test_large or legacy."
+        help="Select EC curve mode: test_small, test_middle, test_large or legacy."
     )
     parser.add_argument(
         "--zero-level-factor",
@@ -243,12 +244,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    tx1 = ECDSATransaction("test_small", 2989, 3635, 9321, 3942, 6705, 616,  6157, 7329, 953,  130,  27.96153846153846153)
-    tx2 = ECDSATransaction("test_small", 6681, 3161, 3520, 8988, 6982, 7039, 6157, 4333, 2307, 2067, 1.529269472665699080)
-    tx3 = ECDSATransaction("test_small", 5051, 1412, 3639, 7992, 698,  2953, 6157, 7770, 2941, 2110, 0.669194312796208530)
-    tx4 = ECDSATransaction("test_small", 4877, 48,   4829, 9553, 5472, 295,  6157, 9355, 4676, 201,  0.238805970149253731)
+    tx1 = ECDSATransaction("test_middle", 84881, 3770,  81111, 102281, 102006, 15430, 101729, 20160, 15281, 0.246711602643806033)
+    tx2 = ECDSATransaction("test_middle", 59607, 14076, 45531, 93084,  85149,  94790, 101729, 22794, 26130, 0.538691159586681974)
+    tx3 = ECDSATransaction("test_middle", 75852, 8028,  67824, 98040,  85256,  78543, 101729, 32082, 9288,  0.864341085271317829)
+    tx4 = ECDSATransaction("test_middle", 65927, 18936, 46991, 99646,  5248,   50942, 101729, 97996, 32208, 0.587928464977645305)
+    tx5 = ECDSATransaction("test_middle", 59952, 6382,  53570, 102889, 17708,  66252, 101729, 61148, 17015, 0.375080811049074346)
+    tx6 = ECDSATransaction("test_middle", 42393, 5614,  36779, 66801,  91504,  62572, 101729, 56596, 17985, 0.312149013066444259)
+    tx7 = ECDSATransaction("test_middle", 50275, 1021,  49254, 81908,  16687,  55594, 101729, 74461, 18642, 0.054768801630726316)
+    tx8 = ECDSATransaction("test_middle", 51565, 6493,  45072, 87069,  36619,  92137, 101729, 21663, 16061, 0.404271215989041778)
 
-    txs = [tx1, tx2, tx3, tx4]
+    txs = [tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8]
 
     t0 = perf_counter()
     matches = find_common_x_any(
