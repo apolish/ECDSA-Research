@@ -10,7 +10,7 @@ This work is in the stage of active development and research; therefore, some se
 ## 📁 Structure
 
 ```markdown
-ECDLP-Research/
+ECDSA-Research/
 ├── README.md
 ├── LICENSE
 ├── src/
