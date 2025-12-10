@@ -40,11 +40,11 @@ TEST_PARAMS_SMALL = CurveParams(
 TEST_PARAMS_MIDDLE = CurveParams(
     name="secp256k1",
     mode="test",
-    p=103657,
+    p=100003,
     a=0,
-    b=10,
-    g=(2, 97773),
-    n=103183
+    b=2,
+    g=(20002, 57568),
+    n=99667
 )
 
 TEST_PARAMS_LARGE = CurveParams(
