@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -21,7 +19,6 @@ from secp256k1 import (
         CurveParams,
         make_bitcoin_legacy_sighash_message,
     )
-
 
 @dataclass(frozen=True)
 class ReportConfig:
@@ -133,11 +130,13 @@ def _write_report(
             "total_key_count",
             "transaction_limit_per_key",
             "total_transaction_count",
+            "maximum_transaction_count",
             "total_cases",
             "case_A_count",
             "case_B_count",
             "case_C_count",
             "case_D_count",
+            "case_E_count",
         ]
 
         # Reliable collection and sorting case_D<number>_count
@@ -163,6 +162,18 @@ def _write_report(
         f.write(f"Spent time: {spent:.3f} sec.\n")
 
     return fname
+
+
+def _goldbach_equation(curve_n, s, s_zk, s_rxk) -> bool:
+    result = False
+    if s_zk + s_rxk > s:
+        s = curve_n + s
+    if s % 2 == 0:
+        n = s // 2
+        if ((s_zk > s_rxk) and (s_zk - s_rxk == (s_zk - n) + (n - s_rxk) == n + 1)) or \
+           ((s_rxk > s_zk) and (s_rxk - s_zk == (s_rxk - n) + (n - s_zk) == n + 1)):
+            result = True
+    return result 
 
 
 def _collect_rows(
@@ -197,6 +208,7 @@ def _collect_rows(
     case_C_count = 0
     case_D_count = 0
     case_D_counts: dict[int, int] = {}
+    case_E_count = 0
 
     # progress
     progress_step = max(1, total_key_count // 10)
@@ -216,17 +228,26 @@ def _collect_rows(
 
             z, r, s, k_inv = ec.sign_message(private_key, msg)
 
+            # hidden data analysis ========================
+            s_zk = (z * k_inv) % curve.n
+            s_rxk = (r * private_key * k_inv) % curve.n
+            # =============================================
+            if _goldbach_equation(curve.n, s, s_zk, s_rxk):
+                case_E_count += 1
+                if case_E_count <= output_count:
+                    rows.append(
+                        [f"E", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-"]
+                    )
             # public data analysis for case C
             s_zr = (z * r) % curve.n
             if s_zr > s:
                 a = s % ((s_zr - s) % curve.n)
                 if a != 0 and a != s:
                     total_cases += 1
-                    # hidden data analysis
-                    s_zk = (z * k_inv) % curve.n
-                    s_rxk = (r * private_key * k_inv) % curve.n
+                    # hidden data analysis ========================
                     m1 = Fraction(s_zk, a)
                     m2 = Fraction(s + s_zr, s_rxk)
+                    # =============================================
                     # B, C cases
                     if m1.denominator == 1 and m2.denominator == 1:
                         if m1 == m2:
@@ -285,16 +306,21 @@ def _collect_rows(
     # project dynamic case_D counts into flat stats
     dynamic_stats = {f"case_D{idx}_count": cnt for idx, cnt in sorted(case_D_counts.items())}
 
+    # maximum transaction count, where 4 = number of parameters (z, r, x, k-1)
+    maximum_transaction_count = (curve.n - 1)**4
+
     stats = {
         "total_key_count": total_key_count,
         "transaction_limit_per_key": transaction_limit_per_key,
         "total_transaction_count": total_key_count * transaction_limit_per_key,
-        "total_cases": total_cases,
+        "maximum_transaction_count": f"{maximum_transaction_count:.6e}",
+        "total_cases": total_cases + case_E_count,
         "case_A_count": case_A_count,
         "case_B_count": case_B_count,
         "case_C_count": case_C_count,
         "case_D_count": case_D_count,
         **dynamic_stats,
+        "case_E_count": case_E_count,
         "spent_time_sec": elapsed,
     }
 

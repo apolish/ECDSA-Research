@@ -21,15 +21,16 @@ ECDSA-Research/
 |   ├── utils/
 │   │   ├── generate_transactions.py         # Script to generate sentetic transactions into local TXT file
 │   │   ├── find_common_private_key.py       # Script to find the common private key for the group of transactions
-│   │   ├── find_common_private_key.txt      # The result of the work 'find_common_private_key.py' script
+│   │   ├── find_common_private_key.txt      # The result of the work 'find_common_private_key.py' script, coupled with the transaction list
 │   │   ├── ...
 │   │   └── ...
 |   └── kaggle/                              # Kaggle's notebooks, datasets, etc. for large-scale computing experiments
 ├── data/
 │   ├── instructions.txt                     # The description of instructions on how to use the 'data' section
-│   ├── transaction_list_20251129013753.txt  # Transaction list for test large curve (~35 transactions for one common private key)
-│   ├── transaction_list_20251130124755.txt  # Transaction list for test small curve (~21 transactions for one common private key)
-│   ├── transaction_list_20251208010827.txt  # Transaction list for test middle curve (~17 transactions for one common private key)
+│   ├── transaction_list_20251211003217.txt  # Transaction list for test small curve (~100M transactions processed for A, B, C, D[all], E cases)
+│   ├── transaction_list_20251211130349.txt  # Transaction list for test large curve (~100M transactions processed for A, B, C, D[all], E cases)
+│   ├── transaction_list_20251211135723.txt  # Transaction list for test small curve (~10M transactions processed for A, B, C, D[1], E cases)
+│   ├── ...
 │   └── ...
 └── docs/
     ├── description.txt                      # Temporary description of the purpose of the 'docs' section
