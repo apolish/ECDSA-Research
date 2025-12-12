@@ -253,7 +253,7 @@ def _collect_rows(
             s_zr = (z * r) % curve.n
             if s_zr > s:
                 a = s % ((s_zr - s) % curve.n)
-                if a != 0 and a != s:
+                if a > 0:
                     total_cases += 1
                     # hidden data analysis ========================
                     m1 = Fraction(s_zk, a)
