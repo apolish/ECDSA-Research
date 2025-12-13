@@ -89,7 +89,7 @@ def factor_window(f: float) -> Tuple[int, int]:
 # ======================================================================
 # RANGE BUILDER (WITH ZERO-LEVEL FIX)
 # ======================================================================
-def s_zk_range(a: int, low: int, high: int, zero_level_factor: float) -> range:
+def s_zk_range(a: int, low: int, high: int) -> range:
     """
     Full s_zk range for levels [low, high].
 
@@ -99,16 +99,14 @@ def s_zk_range(a: int, low: int, high: int, zero_level_factor: float) -> range:
     Zero-level case:
         low == 0 → formal window is [0, a]
         We modify it to:
-            start = max(1, round(a * zero_level_factor))
+            start = 1
             end   = a
     """
     if high < low:
         raise ValueError("Invalid factor window.")
 
     if low == 0:
-        start = int(round(a * zero_level_factor))
-        if start < 1:
-            start = 1
+        start = 1
         end = a
     else:
         start = a * low
@@ -141,7 +139,6 @@ def build_x_index(
 def find_common_x_any(
     txs: List[ECDSATransaction],
     curve_mode: str,
-    zero_level_factor: float,
 ) -> List[Tuple[int, List[int]]]:
     """
     Compute intersection of x-candidates across all transactions
@@ -169,7 +166,7 @@ def find_common_x_any(
     items: List[Tuple[int, ECDSATransaction, range]] = []
     for idx, t in enumerate(txs):
         low, high = factor_window(t.f)
-        rng = s_zk_range(t.a, low, high, zero_level_factor)
+        rng = s_zk_range(t.a, low, high)
         items.append((idx, t, rng))
 
     # Sort by ascending range size
@@ -230,33 +227,25 @@ def parse_args() -> argparse.Namespace:
         default="test_small",
         help="Select EC curve mode: test_small, test_large or legacy."
     )
-    parser.add_argument(
-        "--zero-level-factor",
-        type=float,
-        default=0.01,
-        help="Lower bound shift for zero-level (floor(f) == 0): s_zk_low = round(a * zero_level_factor)."
-    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
 
-    tx1 = ECDSATransaction("test_small", 33436, 10126, 23310, 45940, 30951, 44533, 94770, 74914, 8428,  1.201471286188894162)
-    tx2 = ECDSATransaction("test_small", 68667, 22866, 45801, 86129, 8546,  46858, 94770, 72263, 16281, 1.404459185553712916)
-    tx3 = ECDSATransaction("test_small", 61461, 27709, 33752, 85240, 64289, 18439, 94770, 23120, 13903, 1.993023088542041286)
-    tx4 = ECDSATransaction("test_small", 64098, 19551, 44547, 90719, 35708, 6051,  94770, 72222, 10856, 1.800939572586588061)
-    tx5 = ECDSATransaction("test_small", 60980, 25877, 35103, 83541, 62174, 67885, 94770, 46179, 15858, 1.631794677765165846)
-    tx6 = ECDSATransaction("test_small", 22322, 11140, 11182, 35402, 50888, 59106, 94770, 93345, 9242,  1.205366803722138065)
-    tx7 = ECDSATransaction("test_small", 64830, 27086, 37744, 90460, 44881, 89838, 94770, 58869, 13570, 1.996020633750921149)
+    tx1 = ECDSATransaction("test_small", 37056, 2688,  34368, 13361, 76123, 45968, 45809, 79957, 13361, 0.201182546216600553)
+    tx2 = ECDSATransaction("test_small", 95040, 4142,  90898, 73553, 44223, 84492, 45809, 97952, 9092,  0.455565332160140783)
+    tx3 = ECDSATransaction("test_small", 29017, 13518, 15499, 86566, 48595, 252,   45809, 28839, 29017, 0.465864837853671985)
+    tx4 = ECDSATransaction("test_small", 81859, 5504,  76355, 60734, 2029,  10591, 45809, 24023, 18484, 0.297771045228305561)
+    tx5 = ECDSATransaction("test_small", 35813, 478,   35335, 67033, 46356, 12706, 45809, 42962, 4593,  0.104071413019812758)
+    tx6 = ECDSATransaction("test_small", 15169, 12403, 2766,  68187, 55468, 11837, 45809, 87066, 15169, 0.817654426791482629)
 
-    txs = [tx1, tx2, tx3, tx4, tx5, tx6, tx7]
+    txs = [tx1, tx2, tx3, tx4, tx5, tx6]
 
     t0 = perf_counter()
     matches = find_common_x_any(
         txs,
         curve_mode=args.curve_mode,
-        zero_level_factor=args.zero_level_factor,
     )
     dt = perf_counter() - t0
 
@@ -264,7 +253,7 @@ def main() -> None:
     total_attempts = 1
     for i, t in enumerate(txs, 1):
         low, high = factor_window(t.f)
-        rng = s_zk_range(t.a, low, high, args.zero_level_factor)
+        rng = s_zk_range(t.a, low, high)
         total_attempts *= len(rng)
         print(f"tx{i}: N (levels) = [{low}, {high}], s_zk range = [{rng.start}, {rng.stop - 1}], attempts = {len(rng)}")
     print(f"Total attempts (theoretical Cartesian product): {total_attempts:.6e}")

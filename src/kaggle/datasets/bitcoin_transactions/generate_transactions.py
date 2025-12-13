@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -13,7 +15,6 @@ import re
 from secp256k1 import (
         Secp256k1,
         TEST_PARAMS_SMALL,
-        TEST_PARAMS_MIDDLE,
         TEST_PARAMS_LARGE,
         LEGACY_PARAMS,
         CurveParams,
@@ -137,6 +138,7 @@ def _write_report(
             "case_C_count",
             "case_D_count",
             "case_E_count",
+            "case_F_count",
         ]
 
         # Reliable collection and sorting case_D<number>_count
@@ -209,6 +211,7 @@ def _collect_rows(
     case_D_count = 0
     case_D_counts: dict[int, int] = {}
     case_E_count = 0
+    case_F_count = 0
 
     # progress
     progress_step = max(1, total_key_count // 10)
@@ -232,17 +235,21 @@ def _collect_rows(
             s_zk = (z * k_inv) % curve.n
             s_rxk = (r * private_key * k_inv) % curve.n
             # =============================================
+            # E case
             if _goldbach_equation(curve.n, s, s_zk, s_rxk):
                 case_E_count += 1
                 if case_E_count <= output_count:
                     rows.append(
                         [f"E", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-"]
                     )
-            # public data analysis for case C
+            # A, B, C, D, F cases
             s_zr = (z * r) % curve.n
-            if s_zr > s:
-                a = s % ((s_zr - s) % curve.n)
-                if a != 0 and a != s:
+            if s_zr != s:
+                if s_zr > s:
+                    a = s % ((s_zr - s) % curve.n)
+                else: # s_zr < s
+                    a = s % ((s - s_zr) % curve.n)
+                if a > 0: # and a != s:
                     total_cases += 1
                     # hidden data analysis ========================
                     m1 = Fraction(s_zk, a)
@@ -297,6 +304,13 @@ def _collect_rows(
                                     rows.append(
                                         [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
                                     )
+            else:
+                # F case
+                case_F_count += 1
+                if case_F_count <= output_count:
+                    rows.append(
+                        ["F", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, "-", "-", "-", "-"]
+                    )
 
         if i % progress_step == 0:
             print(f"{i} keys ({i * transaction_limit_per_key} transactions) generated...")
@@ -314,13 +328,14 @@ def _collect_rows(
         "transaction_limit_per_key": transaction_limit_per_key,
         "total_transaction_count": total_key_count * transaction_limit_per_key,
         "maximum_transaction_count": f"{maximum_transaction_count:.6e}",
-        "total_cases": total_cases + case_E_count,
+        "total_cases": total_cases + case_E_count + case_F_count,
         "case_A_count": case_A_count,
         "case_B_count": case_B_count,
         "case_C_count": case_C_count,
         "case_D_count": case_D_count,
         **dynamic_stats,
         "case_E_count": case_E_count,
+        "case_F_count": case_F_count,
         "spent_time_sec": elapsed,
     }
 
@@ -330,20 +345,18 @@ def _collect_rows(
 def _select_curve(mode: str) -> CurveParams:
     if mode == "test_small":
         return TEST_PARAMS_SMALL
-    if mode == "test_middle":
-        return TEST_PARAMS_MIDDLE
     if mode == "test_large":
         return TEST_PARAMS_LARGE
     if mode == "legacy":
         return LEGACY_PARAMS
-    raise ValueError("Mode must be 'test_small' or 'test_middle' or 'test_large' or 'legacy'!")
+    raise ValueError("Mode must be 'test_small' or 'test_large' or 'legacy'!")
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="secp256k1 transaction data generator")
-    p.add_argument("--mode", choices=["test_small", "test_middle", "test_large", "legacy"], default="test_small", help="Curve mode: test_small, test_middle, test_large or legacy.")
+    p.add_argument("--mode", choices=["test_small", "test_large", "legacy"], default="test_small", help="Curve mode: test_small, test_large or legacy.")
     p.add_argument("--private_key", type=int, default=0, help="Private key to use (if '0' then random else specific key)")
-    p.add_argument("--keys", type=int, default=9965, help="Total unique keys to generate")
+    p.add_argument("--keys", type=int, default=10000, help="Total unique keys to generate")
     p.add_argument("--tx_per_key", type=int, default=1, help="Transactions per key")
     p.add_argument("--output_count", type=int, default=1000, help="Number of output transactions to generate")
     p.add_argument("--d_case_digit", type=int, default=-1, help="Digit for filtering case D (if -1 then all)")

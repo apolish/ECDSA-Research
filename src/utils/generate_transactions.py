@@ -148,6 +148,7 @@ def _write_report(
             "case_C_count",
             "case_D_count",
             "case_E_count",
+            "case_F_count",
         ]
 
         # Reliable collection and sorting case_D<number>_count
@@ -220,6 +221,7 @@ def _collect_rows(
     case_D_count = 0
     case_D_counts: dict[int, int] = {}
     case_E_count = 0
+    case_F_count = 0
 
     # progress
     progress_step = max(1, total_key_count // 10)
@@ -243,17 +245,21 @@ def _collect_rows(
             s_zk = (z * k_inv) % curve.n
             s_rxk = (r * private_key * k_inv) % curve.n
             # =============================================
+            # E case
             if _goldbach_equation(curve.n, s, s_zk, s_rxk):
                 case_E_count += 1
                 if case_E_count <= output_count:
                     rows.append(
                         [f"E", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-"]
                     )
-            # public data analysis for case C
+            # A, B, C, D, F cases
             s_zr = (z * r) % curve.n
-            if s_zr > s:
-                a = s % ((s_zr - s) % curve.n)
-                if a > 0:
+            if s_zr != s:
+                if s_zr > s:
+                    a = s % ((s_zr - s) % curve.n)
+                else: # s_zr < s
+                    a = s % ((s - s_zr) % curve.n)
+                if a > 0: # and a != s:
                     total_cases += 1
                     # hidden data analysis ========================
                     m1 = Fraction(s_zk, a)
@@ -308,6 +314,13 @@ def _collect_rows(
                                     rows.append(
                                         [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
                                     )
+            else:
+                # F case
+                case_F_count += 1
+                if case_F_count <= output_count:
+                    rows.append(
+                        ["F", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, "-", "-", "-", "-"]
+                    )
 
         if i % progress_step == 0:
             print(f"{i} keys ({i * transaction_limit_per_key} transactions) generated...")
@@ -325,13 +338,14 @@ def _collect_rows(
         "transaction_limit_per_key": transaction_limit_per_key,
         "total_transaction_count": total_key_count * transaction_limit_per_key,
         "maximum_transaction_count": f"{maximum_transaction_count:.6e}",
-        "total_cases": total_cases + case_E_count,
+        "total_cases": total_cases + case_E_count + case_F_count,
         "case_A_count": case_A_count,
         "case_B_count": case_B_count,
         "case_C_count": case_C_count,
         "case_D_count": case_D_count,
         **dynamic_stats,
         "case_E_count": case_E_count,
+        "case_F_count": case_F_count,
         "spent_time_sec": elapsed,
     }
 
