@@ -27,8 +27,8 @@ ECDSA-Research/
 |   └── kaggle/                              # Kaggle's notebooks, datasets, etc. for large-scale computing experiments
 ├── data/
 │   ├── instructions.txt                     # The description of instructions on how to use the 'data' section
-│   ├── transaction_list_20251213234825.txt  # Transaction list for test small curve (~1M transactions processed for D[0] case)
-│   ├── transaction_list_20251214001804.txt  # Transaction list for test large curve (~100M transactions processed for A, B, C, D[all], E cases)
+│   ├── transaction_list_20251214141726.txt  # Transaction list for test large curve (~1M transactions processed for A, B, C, D[all], E cases)
+│   ├── transaction_list_20251214150900.txt  # Transaction list for test small curve (~1M transactions processed for A, B, C, D[all], E cases)
 │   ├── ...
 │   └── ...
 └── docs/
