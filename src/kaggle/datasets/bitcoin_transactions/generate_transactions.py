@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
 from fractions import Fraction
+from math import gcd
 from typing import Iterable, List, Sequence, Tuple
 import re
+from sympy import mod_inverse, sqrt_mod
 from secp256k1 import (
         Secp256k1,
         TEST_PARAMS_SMALL,
@@ -25,7 +27,7 @@ class ReportConfig:
     column_widths: Sequence[int]
     line_length: int
     headers: Sequence[str] = (
-        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k-1", "a", "m1", "m2", "f"
+        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k-1", "a", "m1", "m2", "f", "x_recovered"
     )
 
 
@@ -33,13 +35,13 @@ def _build_report_config(curve: CurveParams) -> ReportConfig:
     if curve.mode == "test":
         precision = 20
         getcontext().prec = precision
-        column_widths = [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, precision + 5]
-        line_length = 145 + precision + 5
+        column_widths = [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, precision + 5, 12]
+        line_length = 145 + precision + 5 + 12
     else:
         precision = 80
         getcontext().prec = precision
-        column_widths = [81, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, precision + 5]
-        line_length = 961 + precision + 5
+        column_widths = [81, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, precision + 5, 80]
+        line_length = 961 + precision + 5 + 80
     return ReportConfig(precision=precision, column_widths=column_widths, line_length=line_length)
 
 
@@ -163,16 +165,92 @@ def _write_report(
     return fname
 
 
-def _goldbach_equation(curve_n, s, s_zk, s_rxk) -> bool:
+def _goldbach_condition(s: int, s_zk: int, s_rxk: int, curve_n: int) -> Tuple[bool, str]:
+    """Check Goldbach condition for case E1 and E2."""
     result = False
+    case = "E1"
     if s_zk + s_rxk > s:
-        s = curve_n + s
+        s += curve_n
+        case = "E2"
     if s % 2 == 0:
         n = s // 2
         if ((s_zk > s_rxk) and (s_zk - s_rxk == (s_zk - n) + (n - s_rxk) == n + 1)) or \
            ((s_rxk > s_zk) and (s_rxk - s_zk == (s_rxk - n) + (n - s_zk) == n + 1)):
             result = True
-    return result 
+    return result, case
+
+
+def _recover_private_key_case_b(s: int, s_zr: int, z: int, r: int, a: int, curve_n: int) -> List[int]:
+    """Recover private key for Goldbach case B."""
+    # Step 1: compute discriminant
+    D = (s * s - 4 * a * ((s_zr + s) % curve_n)) % curve_n
+
+    # Step 2: solve for m1 using modular square root
+    roots = sqrt_mod(D, curve_n, all_roots=True)
+    if not roots:
+        return {"error": "No modular sqrt exists for discriminant D."}
+
+    results = []
+    for root in roots:
+        numerator = (s + root) % curve_n
+        denominator = (2 * a) % curve_n
+        try:
+            denom_inv = mod_inverse(denominator, curve_n)
+        except:
+            continue  # skip if denominator not invertible
+        m1 = (numerator * denom_inv) % curve_n
+
+        s_zk = (a * m1) % curve_n
+        z_inv = mod_inverse(z, curve_n)
+        k = (s_zk * z_inv) % curve_n
+        rk = (r * k) % curve_n
+        rk_inv = mod_inverse(rk, curve_n)
+        s_rxk = (s - s_zk) % curve_n
+        x = (s_rxk * rk_inv) % curve_n
+
+        results.append(x)
+
+    return results
+
+
+def _recover_private_key_case_a(s: int, z: int, r: int, a: int, curve_n: int, m: int = 1) -> int:
+    """Recover private key for Goldbach case A."""
+    z_inv = mod_inverse(z, curve_n)
+    s_zk = a * m
+    k = (s_zk * z_inv) % curve_n
+    s_rxk = (s - s_zk) % curve_n
+    rk = (r * k) % curve_n
+    rk_inv = mod_inverse(rk, curve_n)
+
+    return (s_rxk * rk_inv) % curve_n
+
+
+def _recover_private_key_case_e(case: str, s: int, z: int, r: int, curve_n: int) -> Tuple[int, int]:
+    """Recover private key for Goldbach cases E1 and E2."""
+    if case == "E2":
+        s += curve_n
+    s_half = s // 2
+    a = (s + s_half + 1) // 2
+    b = s - a
+    x1 = _recover_private_key_case_a(s, z, r, a, curve_n, m=1)
+    x2 = _recover_private_key_case_a(s, z, r, b, curve_n, m=1)
+    return x1, x2
+    
+
+def _recover_private_key(case: str, s: int, s_zr: int, z: int, r: int, a: int, curve_n: int) -> object:
+    """Recover private key based on the identified case and public parameters."""
+    if case == "A":
+        return _recover_private_key_case_a(s, z, r, a, curve_n)
+    elif case == "B":
+        return _recover_private_key_case_b(s, s_zr, z, r, a, curve_n)
+    elif case == "C":
+        return "-"
+    elif case == "D":
+        return "-"
+    elif case[0] == "E":
+        return _recover_private_key_case_e(case, s, z, r, curve_n)
+    else:
+        return "-"
 
 
 def _collect_rows(
@@ -232,11 +310,13 @@ def _collect_rows(
             s_rxk = (r * private_key * k_inv) % curve.n
             # =============================================
             # E case
-            if _goldbach_equation(curve.n, s, s_zk, s_rxk):
+            goldbach_result, goldbach_case = _goldbach_condition(s, s_zk, s_rxk, curve.n)
+            if goldbach_result:
                 case_E_count += 1
                 if case_E_count <= output_count:
+                    x1, x2 = _recover_private_key(goldbach_case, s, 0, z, r, 0, curve.n)
                     rows.append(
-                        [f"E", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-"]
+                        [f"{goldbach_case}", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-", f"{x1}, {x2}"]
                     )
             # A, B, C, D cases
             s_zr = (z * r) % curve.n
@@ -254,13 +334,13 @@ def _collect_rows(
                             case_B_count += 1
                             if case_B_count <= output_count:
                                 rows.append(
-                                    ["B", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, m2, "-"]
+                                    ["B", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, m2, "-", _recover_private_key("B", s, s_zr, z, r, a, curve.n)]
                                 )
                         else:
                             case_C_count += 1
                             if case_C_count <= output_count:
                                 rows.append(
-                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-"]
+                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("C", s, s_zr, z, r, a, curve.n)]
                                 )
                     # A, C cases
                     elif m1.denominator == 1 and m2.denominator != 1:
@@ -268,13 +348,13 @@ def _collect_rows(
                             case_A_count += 1
                             if case_A_count <= output_count:
                                 rows.append(
-                                    ["A", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-"]
+                                    ["A", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("A", s, s_zr, z, r, a, curve.n)]
                                 )
                         elif m1 > 1:
                             case_C_count += 1
                             if case_C_count <= output_count:
                                 rows.append(
-                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-"]
+                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("C", s, s_zr, z, r, a, curve.n)]
                                 )
                     else:
                         # D case
@@ -291,11 +371,11 @@ def _collect_rows(
                             if case_D_count <= output_count:
                                 if d_case_digit == -1:
                                     rows.append(
-                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
+                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n)]
                                     )
                                 elif digit == d_case_digit:
                                     rows.append(
-                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str]
+                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n)]
                                     )
 
         if i % progress_step == 0:
@@ -342,7 +422,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--mode", choices=["test_small", "test_large", "legacy"], default="test_small", help="Curve mode: test_small, test_large or legacy.")
     p.add_argument("--private_key", type=int, default=0, help="Private key to use (if '0' then random else specific key)")
     p.add_argument("--keys", type=int, default=10000, help="Total unique keys to generate")
-    p.add_argument("--tx_per_key", type=int, default=1, help="Transactions per key")
+    p.add_argument("--tx_per_key", type=int, default=100, help="Transactions per key")
     p.add_argument("--output_count", type=int, default=1000, help="Number of output transactions to generate")
     p.add_argument("--d_case_digit", type=int, default=-1, help="Digit for filtering case D (if -1 then all)")
     p.add_argument("--demo", action="store_true", help="Run demo of key generation, signing, and verification")

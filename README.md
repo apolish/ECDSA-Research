@@ -25,14 +25,8 @@ ECDSA-Research/
 │   │   ├── ...
 │   │   └── ...
 |   └── kaggle/                              # Kaggle's notebooks, datasets, etc. for large-scale computing experiments
-├── data/
-│   ├── instructions.txt                     # The description of instructions on how to use the 'data' section
-│   ├── transaction_list_20251214141726.txt  # Transaction list for test large curve (~1M transactions processed for A, B, C, D[all], E cases)
-│   ├── transaction_list_20251214150900.txt  # Transaction list for test small curve (~1M transactions processed for A, B, C, D[all], E cases)
-│   ├── ...
-│   └── ...
-└── docs/
-    ├── description.txt                      # Temporary description of the purpose of the 'docs' section
+└──data/
+    ├── transaction_list_20251223203846.txt  # Transaction list for test small curve (~10M transactions processed for A, B, C, D[all], E cases)
     ├── ...
     └── ...
 ```
@@ -65,4 +59,4 @@ Tracking and monitoring tasks related to the current project can be found here:
 
 [![Go to JIRA](https://img.shields.io/badge/JIRA-Visit-blue)](https://cryptonsystemslab.atlassian.net/jira/core/projects/CSL/board?filter=&groupBy=status&atlOrigin=eyJpIjoiZWYwNGI4ODlhYmZjNDdkNGIwMGM3NWUwNzk0MTBjNGYiLCJwIjoiaiJ9)
 
-### STATUS: Suspended
+### STATUS: Active
