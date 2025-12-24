@@ -2,7 +2,7 @@
 
 ## 🔍 Overview
 
-This work investigates algebraic anomalies in ECDSA signatures that enable deterministic private-key recovery under ideal-randomness assumptions about the "k" nonce. Three classes of vulnerabilities (A, B, E) are described, supported by analytical formulas that enable deterministic private-key recovery, simulations, and experimental transaction datasets for small test elliptic curves. Additionally, work is underway to develop a mathematical framework for deterministic private-key recovery for a class of vulnerabilities (Case D) observed in ECDSA signatures on the real elliptic curve "secp256k1".
+This work investigates algebraic anomalies in ECDSA signatures that enable deterministic private-key recovery under ideal-randomness assumptions about the "k" nonce. Three classes of vulnerabilities (A, B, E cases) are described, supported by analytical formulas that enable deterministic private-key recovery, simulations, and experimental transaction datasets for small test elliptic curves. Additionally, work is underway to develop a mathematical framework for deterministic private-key recovery for a class of vulnerabilities (case D) observed in ECDSA signatures on the real elliptic curve "secp256k1".
 
 NOTICE!
 This work is in the stage of active development and research; therefore, some sections of this repository are incomplete, and documentation may be unavailable at this stage.
