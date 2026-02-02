@@ -236,10 +236,10 @@ def main() -> None:
     # ---------------------------------|--------------------------------------------------------------------------------------------|
     #    Grouped transaction list      | s       s_zk    s_rxk   s_zr    z       r       x       k-1     a      f                   |   
     # ---------------------------------|--------------------------------------------------------------------------------------------|
-    tx1 = ECDSATransaction("test_large", 48042,  63894,  83815,  68296,  36642,  86047,  39914,  80819,  7534,  8.480753915582691797)
-    tx2 = ECDSATransaction("test_large", 86916,  67577,  19339,  92261,  46382,  62664,  39914,  6622 ,  1396,  48.40759312320916905)
-    tx3 = ECDSATransaction("test_large", 84412,  7091,   77321,  97001,  18098,  52284,  39914,  41353,  8878,  0.798715927010587970)
-    tx4 = ECDSATransaction("test_large", 45539,  80772,  64434,  66921,  60061,  33963,  39914,  79493,  2775,  29.10702702702702702)
+    tx1 = ECDSATransaction("test_small", 56918,  65993,  90592,  85949,  44629,  50042,  87312,  57974,  27887, 2.366443145551690752)
+    tx2 = ECDSATransaction("test_small", 35783,  19491,  16292,  70082,  63024,  67499,  87312,  46176,  1484,  13.13409703504043126)
+    tx3 = ECDSATransaction("test_small", 41446,  44251,  96862,  42629,  82149,  54485,  87312,  47669,  41,    1079.292682926829268)
+    tx4 = ECDSATransaction("test_small", 43175,  419,    42756,  64472,  67889,  41931,  87312,  58678,  581,   0.721170395869191049)
     # ---------------------------------|--------------------------------------------------------------------------------------------|
 
     txs = [tx1, tx2, tx3, tx4]
@@ -261,12 +261,16 @@ def main() -> None:
     print(f"Total attempts (theoretical Cartesian product): {total_attempts:.6e}")
 
     if matches:
-        getcontext().prec = 20 if args.curve_mode in ("test_small", "test_large") else 80
+        if args.curve_mode in ("test_small", "test_large"):
+            get_context = 20
+        elif args.curve_mode == "legacy":
+            get_context = 80
+        getcontext().prec = get_context
         for x, chain in matches:
             print(f"\nFound common x = {x}")
             for i, (t, szk) in enumerate(zip(txs, chain), 1):
                 fv = Decimal(szk) / Decimal(t.a)
-                print(f"  tx{i}: s_zk = {szk}, f = {str(fv)[:20]}")
+                print(f"  tx{i}: s_zk = {szk}, f = {str(fv)[:get_context]}")
     else:
         print("\nNo common x found.")
 
