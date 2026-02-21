@@ -24,9 +24,11 @@ ECDSA-Research/
 │   │   ├── find_common_private_key.txt      # The result of the work 'find_common_private_key.py' script, coupled with the transaction list
 |   └── kaggle/                              # Kaggle's notebooks, datasets, etc. for large-scale computing experiments
 ├──data/
-│   └── transaction_list_20251223203846.txt  # Transaction list for test small curve (~10M transactions processed for A, B, C, D[all], E cases)
+│   ├── transaction_list_20260221205853.txt  # Transaction list for test small curve (~1M transactions processed for A, B, C, D[all], E cases)
+│   ├── transaction_list_20260221212522.txt  # Transaction list for test large curve (~1M transactions processed for A, B, C, D[all], E cases)
+│   └── transaction_list_20260221211749.txt  # Transaction list for legacy curve (~10K transactions processed for A, B, C, D[all], E cases)
 └── docs/
-    └── Why this project was closed.pdf      # Extended Conclusion on the Suspension of the Structural Invariant "D" Research
+    └── ...
 ```
 
 ## 📘 Link
