@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import hmac
+import os
 import random
 import time
 from typing import Optional, Tuple
@@ -160,6 +162,23 @@ def make_bitcoin_legacy_sighash_message(public_key: Tuple[int, int]) -> bytes:
 
     return preimage
 
+def int_to_bytes(value: int, byteorder: str = 'big') -> bytes:
+    """
+    Convert an integer to bytes with the minimum required length.
+    
+    :param value: Integer to convert.
+    :param byteorder: 'big' or 'little' endian.
+    :return: Bytes representation of the integer.
+    """
+    if not isinstance(value, int):
+        raise TypeError("Value must be an integer.")
+    if byteorder not in ('big', 'little'):
+        raise ValueError("byteorder must be 'big' or 'little'.")
+
+    # Handle zero explicitly (bit_length() would return 0)
+    length = max(1, (value.bit_length() + 7) // 8)
+    return value.to_bytes(length, byteorder)
+
 
 class Secp256k1:
     """Elliptic curve cryptography implementation for secp256k1."""
@@ -172,6 +191,42 @@ class Secp256k1:
     def curve(self) -> CurveParams:
         """Return elliptic curve parameters."""
         return self._curve
+    
+    def _rfc6979_generate_k(self, private_key: int, z: int) -> int:
+        """
+        RFC 6979 deterministic nonce generation (HMAC-SHA256).
+        Used for legacy secp256k1 only.
+        """
+        n = self._curve.n
+        qlen = n.bit_length()
+        holen = hashlib.sha256().digest_size
+        rolen = (qlen + 7) // 8
+
+        bx = private_key.to_bytes(rolen, "big") + z.to_bytes(rolen, "big")
+
+        v = b"\x01" * holen
+        k = b"\x00" * holen
+
+        k = hmac.new(k, v + b"\x00" + bx, hashlib.sha256).digest()
+        v = hmac.new(k, v, hashlib.sha256).digest()
+        k = hmac.new(k, v + b"\x01" + bx, hashlib.sha256).digest()
+        v = hmac.new(k, v, hashlib.sha256).digest()
+
+        while True:
+            v = hmac.new(k, v, hashlib.sha256).digest()
+            candidate = int.from_bytes(v, "big")
+            k_candidate = candidate % n
+            if 1 <= k_candidate < n:
+                return k_candidate
+
+    def _generate_private_key(self) -> int:
+        """Generate a random private key within the valid range."""
+        length_in_bytes = len(int_to_bytes(self._curve.n, 'big'))
+        # Based on real Bitcoin / secp256k1 model! (for legacy and test curves)
+        while True:
+            private_key = int.from_bytes(os.urandom(length_in_bytes), "big")
+            if 1 <= private_key < self._curve.n:
+                return private_key
 
     @staticmethod
     def inverse_mod(k: int, p: int) -> int:
@@ -272,11 +327,16 @@ class Secp256k1:
         h = hashlib.sha256(h).digest()
         return int.from_bytes(h, "big") % self._curve.n
 
-    def sign_message(self, private_key: int, message: bytes) -> Tuple[int, int, int, int]:
+    def sign_message(self, private_key: int, message: bytes, min_start_range: int) -> Tuple[int, int, int, int]:
         """Create ECDSA signature for a message using private key."""
         z = self.hash_message(message)
         while True:
-            k = random.randrange(1, self._curve.n - 1)
+            if self._curve.mode == "legacy":
+                k = self._rfc6979_generate_k(private_key, z)
+                if k < min_start_range:
+                    continue
+            else: # "test"
+                k = random.randrange(min_start_range, self._curve.n - 1)
             x, _ = self.scalar_multiply(k, self._curve.g)
             r = x % self._curve.n
             if r == 0:
@@ -303,16 +363,16 @@ class Secp256k1:
             return False
         return (x % self._curve.n) == r
 
-    def generate_unique_keys(self, count, range_start, range_end):
+    def generate_unique_keys(self, count: int, min_start_range: int) -> list[int]:
         """Generate a list of unique random integers within a specified range."""
-        if self._curve.mode == "test":
-            return random.sample(range(range_start, range_end), count)
-        elif self._curve.mode == "legacy":
-            seen = set()
-            while len(seen) < count:
-                candidate = random.randrange(range_start, range_end)
+        seen = set()
+        while len(seen) < count:
+            candidate = self._generate_private_key()
+            if candidate < min_start_range:
+                continue
+            if candidate not in seen:
                 seen.add(candidate)
-            return list(seen)
+        return list(seen)
 
 
 def print_curve_run(curve: CurveParams, private_key: Optional[int] = None) -> None:
@@ -351,7 +411,7 @@ def print_curve_run(curve: CurveParams, private_key: Optional[int] = None) -> No
     else:
         # For test curves we keep an arbitrary message; z is randomized in hash_message
         message = b"Hello, secp256k1!"
-    signature = ec.sign_message(private_key, message)
+    signature = ec.sign_message(private_key, message, min_start_range=1)
     print("Signature parameters:")
     print(f"  z:   {hex(signature[0])[2:]}, {signature[0]}")
     print(f"  r:   {hex(signature[1])[2:]}, {signature[1]}")

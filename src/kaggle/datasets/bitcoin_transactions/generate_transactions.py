@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import random
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -27,7 +29,7 @@ class ReportConfig:
     column_widths: Sequence[int]
     line_length: int
     headers: Sequence[str] = (
-        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k-1", "a", "m1", "m2", "f", "x_recovered"
+        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k^{-1}", "a", "m1", "m2", "f", "x_recovered"
     )
 
 
@@ -261,9 +263,8 @@ def _collect_rows(
     transaction_limit_per_key: int,
     output_count: int,
     d_case_digit: int,
+    min_start_range: int,
 ) -> Tuple[List[Sequence[object]], dict]:
-    import random
-    import time
 
     curve = ec.curve
     start = time.time()
@@ -272,9 +273,7 @@ def _collect_rows(
     if private_key != 0 and private_key < curve.n:
         uniq_keys = [private_key]
     else:
-        range_start = 1
-        range_end = curve.n - 1
-        uniq_keys = ec.generate_unique_keys(total_key_count, range_start, range_end)
+        uniq_keys = ec.generate_unique_keys(total_key_count, min_start_range)
 
     rows: List[Sequence[object]] = []
 
@@ -303,7 +302,7 @@ def _collect_rows(
                 rnd = random.randrange(1, curve.n - 1)
                 msg = str(rnd).encode()
 
-            z, r, s, k_inv = ec.sign_message(private_key, msg)
+            z, r, s, k_inv = ec.sign_message(private_key, msg, min_start_range)
 
             # hidden data analysis ========================
             s_zk = (z * k_inv) % curve.n
@@ -425,6 +424,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--tx_per_key", type=int, default=100, help="Transactions per key")
     p.add_argument("--output_count", type=int, default=1000, help="Number of output transactions to generate")
     p.add_argument("--d_case_digit", type=int, default=-1, help="Digit for filtering case D (if -1 then all)")
+    p.add_argument("--min_start_range", type=int, default=1, help="Minimum start range for private key and k-nonce generation")
     p.add_argument("--demo", action="store_true", help="Run demo of key generation, signing, and verification")
     return p.parse_args(argv)
 
@@ -446,6 +446,7 @@ def main() -> None:
         transaction_limit_per_key=args.tx_per_key,
         output_count=args.output_count,
         d_case_digit=args.d_case_digit,
+        min_start_range=args.min_start_range,
     )
     path = _write_report(curve, cfg, rows, stats)
     print(f"Wrote report: {path}")
