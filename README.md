@@ -2,10 +2,15 @@
 
 ## 🔍 Overview
 
-This work investigates algebraic anomalies in ECDSA signatures that enable deterministic private-key recovery under ideal-randomness assumptions about the "k" nonce. Three classes of vulnerabilities (A, B, E cases) are described, supported by analytical formulas that enable deterministic private-key recovery, simulations, and experimental transaction datasets for small test elliptic curves. Additionally, work is underway to develop a mathematical framework for deterministic private-key recovery for a class of vulnerabilities (case D) observed in ECDSA signatures on the real elliptic curve "secp256k1".
+This research investigates algebraic anomalies in ECDSA signatures — structured deviations in the internal arithmetic of the signing equation that arise under ideally-random nonce generation and expose exploitable mathematical relationships between public signature components.
 
-NOTICE!
-This work is in the stage of active development and research; therefore, some sections of this repository are incomplete, and documentation may be unavailable at this stage.
+The work identifies and formalizes five classes of anomalies (A, B, C, D, E), observed across synthetic test curves and the real-world elliptic curve **secp256k1**. For three of these classes — **A**, **B**, and **E** — closed-form analytical formulas for deterministic private-key recovery have been derived and verified. Anomaly **A** exploits a linear divisibility condition on the `s_zk` component; anomaly **B** requires solving a modular quadratic equation via discriminant and modular square root; anomaly **E** (subdivided into E1 and E2) is rooted in a Goldbach-type additive decomposition of the signature scalar `s`, enabling candidate private-key recovery from a pair of complementary component values.
+
+The largest and most structurally diverse class — **D** — encompasses signatures where the ratio `f = s_zk / a` takes a non-integer value, with the integer part `⌊f⌋` defining a bounded search level. Anomaly D is currently under active research: a mathematical framework for narrowing the private-key search space via cross-transaction intersection of candidate `x` values has been developed and is being experimentally validated on both small test curves and the legacy secp256k1 curve.
+
+The repository includes transaction generation scripts, analytical recovery tools, large-scale Kaggle-based computation notebooks, and experimental datasets containing up to ~1M classified ECDSA transactions across multiple curve configurations.
+
+> ⚠️ **NOTICE:** This work is in active development. Some sections of the repository are incomplete and documentation may be unavailable at this stage.
 
 ## 📁 Structure
 
