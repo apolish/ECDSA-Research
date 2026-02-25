@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECDSA — Algebraic Anomalies: Mathematical Framework</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Cinzel:wght@400;600&display=swap');
+
+  :root {
+    --bg:        #0b0d11;
+    --surface:   #111318;
+    --border:    #1e2130;
+    --accent:    #c8a96e;
+    --accent2:   #6e9dc8;
+    --accent3:   #7ec86e;
+    --accent4:   #c86e7e;
+    --text:      #d6cebc;
+    --muted:     #7a7264;
+    --heading:   #e8dcc8;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 18px;
+    line-height: 1.75;
+    min-height: 100vh;
+  }
+
+  /* ── grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999;
+  }
+
+  /* ── layout ── */
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 60px 40px 100px;
+  }
+
+  /* ── header ── */
+  header {
+    text-align: center;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 56px;
+    position: relative;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 50%;
+    transform: translateX(-50%);
+    width: 80px; height: 2px;
+    background: var(--accent);
+  }
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+  h1 {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(22px, 4vw, 34px);
+    font-weight: 600;
+    color: var(--heading);
+    letter-spacing: 0.03em;
+    line-height: 1.3;
+    margin-bottom: 16px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 16px;
+  }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 24px 32px;
+    margin-bottom: 56px;
+    border-radius: 2px;
+  }
+  .toc-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    padding-left: 22px;
+    font-size: 16px;
+  }
+  .toc li { margin: 4px 0; }
+  .toc a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── sections ── */
+  section { margin-bottom: 64px; }
+
+  h2 {
+    font-family: 'Cinzel', serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--heading);
+    margin-bottom: 28px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    background: rgba(200,169,110,0.08);
+    border: 1px solid rgba(200,169,110,0.2);
+    padding: 2px 8px;
+    border-radius: 2px;
+    letter-spacing: 0.1em;
+  }
+
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--heading);
+    margin: 32px 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h3 .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.05em;
+  }
+  .badge-a  { background: rgba(126,200,110,0.12); color: var(--accent3); border: 1px solid rgba(126,200,110,0.3); }
+  .badge-b  { background: rgba(110,157,200,0.12); color: var(--accent2); border: 1px solid rgba(110,157,200,0.3); }
+  .badge-c  { background: rgba(200,110,126,0.12); color: var(--accent4); border: 1px solid rgba(200,110,126,0.3); }
+  .badge-d  { background: rgba(200,169,110,0.12); color: var(--accent);  border: 1px solid rgba(200,169,110,0.3); }
+  .badge-e  { background: rgba(180,130,200,0.12); color: #c89ae8;        border: 1px solid rgba(180,130,200,0.3); }
+
+  p { margin-bottom: 14px; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ── math blocks ── */
+  .math-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 22px 28px;
+    margin: 20px 0;
+    overflow-x: auto;
+    position: relative;
+  }
+  .math-block .label {
+    position: absolute;
+    top: 8px; right: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  /* ── condition / recovery boxes ── */
+  .box {
+    padding: 18px 24px;
+    border-radius: 3px;
+    margin: 18px 0;
+  }
+  .box-detect {
+    background: rgba(110,157,200,0.05);
+    border-left: 3px solid var(--accent2);
+    border-top: 1px solid rgba(110,157,200,0.15);
+    border-bottom: 1px solid rgba(110,157,200,0.15);
+    border-right: 1px solid rgba(110,157,200,0.15);
+  }
+  .box-recover {
+    background: rgba(126,200,110,0.05);
+    border-left: 3px solid var(--accent3);
+    border-top: 1px solid rgba(126,200,110,0.15);
+    border-bottom: 1px solid rgba(126,200,110,0.15);
+    border-right: 1px solid rgba(126,200,110,0.15);
+  }
+  .box-warn {
+    background: rgba(200,110,126,0.05);
+    border-left: 3px solid var(--accent4);
+    border-top: 1px solid rgba(200,110,126,0.15);
+    border-bottom: 1px solid rgba(200,110,126,0.15);
+    border-right: 1px solid rgba(200,110,126,0.15);
+  }
+  .box-neutral {
+    background: rgba(200,169,110,0.05);
+    border-left: 3px solid var(--accent);
+    border-top: 1px solid rgba(200,169,110,0.15);
+    border-bottom: 1px solid rgba(200,169,110,0.15);
+    border-right: 1px solid rgba(200,169,110,0.15);
+  }
+  .box-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .bt-detect  { color: var(--accent2); }
+  .bt-recover { color: var(--accent3); }
+  .bt-warn    { color: var(--accent4); }
+  .bt-neutral { color: var(--accent); }
+
+  /* ── code ── */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 2px;
+    color: #c8d8e8;
+  }
+
+  /* ── table ── */
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    margin: 24px 0;
+  }
+  .summary-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--surface);
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .summary-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .summary-table tr:last-child td { border-bottom: none; }
+  .summary-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ── divider ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 48px 0;
+    position: relative;
+  }
+  .divider::after {
+    content: '✦';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    background: var(--bg);
+    padding: 0 12px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* ── footnote ── */
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    font-style: italic;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <header>
+    <div class="kicker">ECDSA Research · Mathematical Framework</div>
+    <h1>Algebraic Anomalies in ECDSA Signatures<br>and Private Key Recovery</h1>
+    <div class="subtitle">Formal mathematical framework derived from the implementation of <code>generate_transactions.py</code></div>
+  </header>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#s1">Base Definitions and Notation</a></li>
+      <li><a href="#s2">Standard ECDSA Equation and Component Decomposition</a></li>
+      <li><a href="#s3">Anomaly Existence Prerequisite (Gate Condition)</a></li>
+      <li><a href="#s4">Anomaly Class A — Linear Condition</a></li>
+      <li><a href="#s5">Anomaly Class B — Quadratic Condition</a></li>
+      <li><a href="#s6">Anomaly Class C — Intermediate Class</a></li>
+      <li><a href="#s7">Anomaly Class D — Fractional Condition</a></li>
+      <li><a href="#s8">Anomaly Class E — Goldbach Condition</a></li>
+      <li><a href="#s9">Summary Table of Anomaly Classes</a></li>
+    </ol>
+  </div>
+
+
+  <!-- SECTION 1 -->
+  <section id="s1">
+    <h2><span class="num">§1</span> Base Definitions and Notation</h2>
+
+    <p>Let an elliptic curve be defined by parameters <code>(p, a, b, G, n)</code>, where \(n\) is the order of the base point \(G\). For an ECDSA signature, we introduce the following notation:</p>
+
+    <div class="math-block">
+      <div class="label">DEF 1.1</div>
+      \[
+        \begin{aligned}
+          z   &= H(m) \bmod n &\quad &\text{(message hash)} \\
+          k   &\in [1,\, n-1] &\quad &\text{(ephemeral nonce)} \\
+          r   &= \bigl[k \cdot G\bigr]_x \bmod n &\quad &\text{(x-coordinate of point \(kG\))} \\
+              s   &= k^{-1}(z + r \cdot x) \bmod n &\quad &\text{(signature scalar)} \\
+              & &\quad &\text{where \(x\) is the private key}
+        \end{aligned}
+      \]
+    </div>
+
+    <p>For analysis of the signature's internal structure, three <em>hidden components</em> are introduced — they are not publicly observable:</p>
+
+    <div class="math-block">
+      <div class="label">DEF 1.2 — Hidden components</div>
+      \[
+        \begin{aligned}
+          s_{zk}   &= z \cdot k^{-1} \bmod n \\
+          s_{rxk}  &= r \cdot x \cdot k^{-1} \bmod n \\
+          s_{zr}   &= z \cdot r \bmod n
+        \end{aligned}
+      \]
+    </div>
+
+    <p>From the definition of the signature, the additive identity follows immediately:</p>
+
+    <div class="math-block">
+      <div class="label">EQ 1.3</div>
+      \[
+        s \equiv s_{zk} + s_{rxk} \pmod{n}
+      \]
+    </div>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 2 -->
+  <section id="s2">
+    <h2><span class="num">§2</span> Standard ECDSA Equation and Component Decomposition</h2>
+
+    <p>We rewrite the classical equation in terms of the introduced components. Multiplying both sides by \(k^{-1}\):</p>
+
+    <div class="math-block">
+      <div class="label">EQ 2.1</div>
+      \[
+        s \cdot k \equiv z + r \cdot x \pmod{n}
+      \]
+    </div>
+
+    <p>The component \(s_{zk}\) is the "projection" of the message hash onto the nonce axis, while \(s_{rxk}\) is the projection of the private key:</p>
+
+    <div class="math-block">
+      <div class="label">EQ 2.2</div>
+      \[
+        s_{zk} = \frac{z}{k} \bmod n, \qquad s_{rxk} = \frac{r \cdot x}{k} \bmod n
+      \]
+    </div>
+
+    <p>From this, the private key can be expressed analytically, provided \(s_{zk}\) is known:</p>
+
+    <div class="math-block">
+      <div class="label">EQ 2.3 — Universal recovery kernel</div>
+      \[
+        x = s_{rxk} \cdot (r \cdot k)^{-1} \bmod n
+        = (s - s_{zk}) \cdot \bigl(r \cdot s_{zk} \cdot z^{-1}\bigr)^{-1} \bmod n
+      \]
+    </div>
+
+    <p>This formula is the <em>recovery kernel</em> for all anomaly classes — the difference between classes lies solely in how \(s_{zk}\) is determined.</p>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 3 -->
+  <section id="s3">
+    <h2><span class="num">§3</span> Anomaly Existence Prerequisite (Gate Condition)</h2>
+
+    <p>Before checking classes A–D, the code computes an auxiliary value \(a\). This is only possible when the <em>gate condition</em> is satisfied:</p>
+
+    <div class="math-block">
+      <div class="label">DEF 3.1 — Gate condition</div>
+      \[
+        s_{zr} > s \quad \Longleftrightarrow \quad z \cdot r \bmod n \;>\; s
+      \]
+    </div>
+
+    <div class="math-block">
+      <div class="label">DEF 3.2 — Auxiliary modular remainder</div>
+      \[
+        a = s \bmod (s_{zr} - s), \qquad a \in \mathbb{Z}_{>0},\; a \neq s,\; a \neq s_{zr}
+      \]
+    </div>
+
+    <p>Analytically, \(a\) is the smallest non-negative remainder of dividing \(s\) by the difference \((s_{zr} - s)\). Two rational coefficients that determine the anomaly class:</p>
+
+    <div class="math-block">
+      <div class="label">DEF 3.3 — Rational anomaly coefficients</div>
+      \[
+        m_1 = \frac{s_{zk}}{a} \in \mathbb{Q}, \qquad
+        m_2 = \frac{s + s_{zr}}{s_{rxk}} \in \mathbb{Q}
+      \]
+    </div>
+
+    <p>The integrality or fractional nature of these coefficients determines the anomaly class (A, B, C, or D).</p>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 4 -->
+  <section id="s4">
+    <h2><span class="num">§4</span> Anomaly Class A — Linear Condition</h2>
+
+    <h3><span class="badge badge-a">DETECT</span> Identification Condition</h3>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">Class A Condition</div>
+      <p>The gate condition holds, and additionally:</p>
+    </div>
+
+    <div class="math-block">
+      <div class="label">COND A.1</div>
+      \[
+        m_1 \in \mathbb{Z} \quad \wedge \quad m_1 = 1 \quad \wedge \quad m_2 \notin \mathbb{Z}
+      \]
+    </div>
+
+    <p>Since \(m_1 = s_{zk}/a = 1\), the condition is equivalent to:</p>
+
+    <div class="math-block">
+      <div class="label">COND A.2</div>
+      \[
+        s_{zk} \equiv a \pmod{n} \quad \Longleftrightarrow \quad a \mid s_{zk} \;\text{ and }\; s_{zk}/a = 1
+      \]
+    </div>
+
+    <h3><span class="badge badge-a">RECOVER</span> Private Key Recovery</h3>
+
+    <p>Step-by-step derivation from the <code>_recover_private_key_case_a</code> function with \(m=1\):</p>
+
+    <div class="math-block">
+      <div class="label">PROOF A</div>
+      \[
+        \begin{aligned}
+          s_{zk} &= a \cdot m \bmod n &&\text{(with m=1: } s_{zk} = a \text{)} \\[4pt]
+          k       &= s_{zk} \cdot z^{-1} \bmod n = a \cdot z^{-1} \bmod n \\[4pt]
+          s_{rxk} &= (s - s_{zk}) \bmod n \\[4pt]
+          rk      &= r \cdot k \bmod n \\[4pt]
+          x       &= s_{rxk} \cdot (rk)^{-1} \bmod n
+        \end{aligned}
+      \]
+    </div>
+
+    <div class="box box-recover">
+      <div class="box-title bt-recover">Closed-form Formula — Case A</div>
+    </div>
+    <div class="math-block">
+      <div class="label">FORMULA A</div>
+      \[
+        \boxed{
+          x = (s - a) \cdot z \cdot \bigl(r \cdot a\bigr)^{-1} \bmod n
+        }
+      \]
+    </div>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 5 -->
+  <section id="s5">
+    <h2><span class="num">§5</span> Anomaly Class B — Quadratic Condition</h2>
+
+    <h3><span class="badge badge-b">DETECT</span> Identification Condition</h3>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">Class B Condition</div>
+    </div>
+
+    <div class="math-block">
+      <div class="label">COND B.1</div>
+      \[
+        m_1 \in \mathbb{Z} \quad \wedge \quad m_2 \in \mathbb{Z} \quad \wedge \quad m_1 = m_2
+      \]
+    </div>
+
+    <p>That is, both rational coefficients are integers and equal to each other. Expanded, this means:</p>
+
+    <div class="math-block">
+      <div class="label">COND B.2</div>
+      \[
+        \frac{s_{zk}}{a} = \frac{s + s_{zr}}{s_{rxk}} = m \in \mathbb{Z}
+      \]
+    </div>
+
+    <p>Since \(s = s_{zk} + s_{rxk}\) and \(s_{zk} = am\), substitution gives:</p>
+    \[am + s_{rxk} = s, \quad s_{rxk}(m) = s - am\]
+    <p>The equation \(\frac{s + s_{zr}}{s_{rxk}} = m\) transforms into a quadratic in \(m\):</p>
+
+    <div class="math-block">
+      <div class="label">EQ B.3 — Quadratic in m</div>
+      \[
+        a \cdot m^2 - s \cdot m + (s + s_{zr}) \equiv 0 \pmod{n}
+      \]
+    </div>
+
+    <h3><span class="badge badge-b">RECOVER</span> Private Key Recovery</h3>
+
+    <p>Solving the quadratic equation via discriminant modulo \(n\):</p>
+
+    <div class="math-block">
+      <div class="label">FORMULA B.1 — Discriminant</div>
+      \[
+        \Delta = \bigl(s^2 - 4a \cdot (s_{zr} + s)\bigr) \bmod n
+      \]
+    </div>
+
+    <div class="math-block">
+      <div class="label">FORMULA B.2 — Modular square root</div>
+      \[
+        \sqrt{\Delta} \bmod n \quad \Rightarrow \quad \text{all roots } \delta_i \text{ such that } \delta_i^2 \equiv \Delta \pmod{n}
+      \]
+    </div>
+
+    <div class="math-block">
+      <div class="label">FORMULA B.3 — Recovery of m and x</div>
+      \[
+        m_i = (s + \delta_i) \cdot (2a)^{-1} \bmod n
+      \]
+      \[
+        \boxed{
+          x_i = (s - a \cdot m_i) \cdot z \cdot (r \cdot a \cdot m_i)^{-1} \bmod n
+        }
+      \]
+    </div>
+
+    <div class="box box-warn">
+      <div class="box-title bt-warn">Note</div>
+      <p>For each root \(\delta_i\) of the discriminant, a separate private key candidate \(x_i\) is obtained. The correct candidate is verified via the public key \(P = x \cdot G\).</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 6 -->
+  <section id="s6">
+    <h2><span class="num">§6</span> Anomaly Class C — Intermediate Class</h2>
+
+    <h3><span class="badge badge-c">DETECT</span> Identification Condition</h3>
+
+    <p>Class C combines two sub-cases:</p>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">Sub-case C.1</div>
+    </div>
+    <div class="math-block">
+      <div class="label">COND C.1</div>
+      \[
+        m_1 \in \mathbb{Z} \quad \wedge \quad m_2 \in \mathbb{Z} \quad \wedge \quad m_1 \neq m_2
+      \]
+    </div>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">Sub-case C.2</div>
+    </div>
+    <div class="math-block">
+      <div class="label">COND C.2</div>
+      \[
+        m_1 \in \mathbb{Z} \quad \wedge \quad m_1 > 1 \quad \wedge \quad m_2 \notin \mathbb{Z}
+      \]
+    </div>
+
+    <div class="box box-warn">
+      <div class="box-title bt-warn">Status</div>
+      <p>For class C, an analytical key recovery formula has <strong>not yet been derived</strong> (<code>x_recovered = "–"</code> in the transaction table). The class is intermediate between A (where \(m_1=1\)) and B (where \(m_1=m_2\)).</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 7 -->
+  <section id="s7">
+    <h2><span class="num">§7</span> Anomaly Class D — Fractional Condition</h2>
+
+    <h3><span class="badge badge-d">DETECT</span> Identification Condition</h3>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">Class D Condition</div>
+    </div>
+
+    <div class="math-block">
+      <div class="label">COND D.1</div>
+      \[
+        m_1 = \frac{s_{zk}}{a} \notin \mathbb{Z} \quad \Longleftrightarrow \quad a \nmid s_{zk}
+      \]
+    </div>
+
+    <p>The sub-class is determined by the integer part of the fractional ratio:</p>
+
+    <div class="math-block">
+      <div class="label">DEF D.2 — D-level</div>
+      \[
+        f = \frac{s_{zk}}{a} \in \mathbb{Q} \setminus \mathbb{Z}, \qquad
+        d = \lfloor f \rfloor \in \mathbb{Z}_{\geq 0}
+      \]
+      \[
+        \text{Class: } D_d, \quad \text{e.g. } D_0, D_1, D_2, \ldots
+      \]
+    </div>
+
+    <p>The fractional part \(\{f\} = f - d\) carries information about the distance between \(s_{zk}\) and the nearest multiple of \(a\):</p>
+
+    <div class="math-block">
+      <div class="label">EQ D.3 — Fractional decomposition</div>
+      \[
+        s_{zk} = a \cdot d + a \cdot \{f\}, \qquad 0 < \{f\} < 1
+      \]
+      \[
+        \Longrightarrow \quad s_{zk} = a \cdot d + \rho, \quad \rho = s_{zk} \bmod a, \quad 0 < \rho < a
+      \]
+    </div>
+
+    <h3><span class="badge badge-d">RESEARCH</span> Candidate Space for \(D_d\)</h3>
+
+    <p>Since \(s_{zk} = z \cdot k^{-1} \bmod n\), candidates for \(k\) at a fixed level \(d\) satisfy:</p>
+
+    <div class="math-block">
+      <div class="label">EQ D.4 — Candidate space</div>
+      \[
+        z \cdot k^{-1} \equiv a \cdot d + \rho \pmod{n}, \qquad \rho \in (0, a)
+      \]
+      \[
+        \Longrightarrow \quad k \equiv z \cdot (ad + \rho)^{-1} \pmod{n}
+      \]
+    </div>
+
+    <div class="box box-warn">
+      <div class="box-title bt-warn">Active Research Status</div>
+      <p>The search space for \(D_d\) is bounded by \(a\) candidates (over \(\rho \in [1, a-1]\)). The method of narrowing through intersection of candidate sets \(x\) across multiple transactions of the same key is under development and validation.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 8 -->
+  <section id="s8">
+    <h2><span class="num">§8</span> Anomaly Class E — Goldbach Condition</h2>
+
+    <p>Class E is checked <em>independently</em> of the gate condition in §3 and is based on the additive symmetry of the components relative to \(s\).</p>
+
+    <h3><span class="badge badge-e">DETECT</span> Sub-class E1</h3>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">E1 — standard case</div>
+    </div>
+
+    <div class="math-block">
+      <div class="label">COND E1</div>
+      \[
+        s_{zk} + s_{rxk} \leq s \quad \wedge \quad s \equiv 0 \pmod{2}
+      \]
+      \[
+        \wedge \quad \bigl|s_{zk} - s_{rxk}\bigr| = \frac{s}{2} + 1
+      \]
+    </div>
+
+    <h3><span class="badge badge-e">DETECT</span> Sub-class E2</h3>
+
+    <div class="box box-detect">
+      <div class="box-title bt-detect">E2 — wrap-around case</div>
+    </div>
+
+    <div class="math-block">
+      <div class="label">COND E2</div>
+      \[
+        s_{zk} + s_{rxk} > s \quad \Rightarrow \quad s' = s + n
+      \]
+      \[
+        s' \equiv 0 \pmod{2} \quad \wedge \quad \bigl|s_{zk} - s_{rxk}\bigr| = \frac{s'}{2} + 1
+      \]
+    </div>
+
+    <p>A single unified condition for both sub-classes (where \(s^*\) is the adjusted \(s\)):</p>
+
+    <div class="math-block">
+      <div class="label">COND E — Goldbach decomposition</div>
+      \[
+        \exists\, \nu = \frac{s^*}{2} \in \mathbb{Z} : \quad \bigl|s_{zk} - s_{rxk}\bigr| = \nu + 1
+      \]
+    </div>
+
+    <p>This means \(s_{zk}\) and \(s_{rxk}\) are two numbers that differ from the "midpoint" \(\nu\) by exactly \(\frac{1}{2}\), i.e.:</p>
+
+    <div class="math-block">
+      <div class="label">EQ E — Additive pair</div>
+      \[
+        \{s_{zk},\, s_{rxk}\} = \left\{\nu + \frac{1}{2} + \frac{1}{2},\;\; \nu - \frac{1}{2} + \frac{1}{2}\right\}
+        = \left\{\nu + 1,\;\; \nu\right\}
+        \;\Longrightarrow\; s_{zk} + s_{rxk} = 2\nu + 1 = s^* \pm 1
+      \]
+    </div>
+
+    <h3><span class="badge badge-e">RECOVER</span> Private Key Recovery</h3>
+
+    <p>From \(s^*\) we compute two candidates \(a\) and \(b\) for the component \(s_{zk}\):</p>
+
+    <div class="math-block">
+      <div class="label">FORMULA E.1 — Candidate components</div>
+      \[
+        \nu = \left\lfloor \frac{s^*}{2} \right\rfloor, \qquad
+        a = \left\lceil \frac{s^* + \nu + 1}{2} \right\rceil = \frac{s^* + \nu + 1}{2}, \qquad
+        b = s^* - a
+      \]
+    </div>
+
+    <p>Each candidate yields a separate private key via the recovery formula from §2:</p>
+
+    <div class="math-block">
+      <div class="label">FORMULA E.2 — Dual key recovery</div>
+      \[
+        \boxed{
+          x_1 = (s^* - a) \cdot z \cdot (r \cdot a)^{-1} \bmod n
+        }
+      \]
+      \[
+        \boxed{
+          x_2 = (s^* - b) \cdot z \cdot (r \cdot b)^{-1} \bmod n
+        }
+      \]
+    </div>
+
+    <div class="box box-neutral">
+      <div class="box-title bt-neutral">Connection to Goldbach's Conjecture</div>
+      <p>Condition E is a discrete analogue of decomposing an even number \(s^*\) into a sum of two "almost equal" addends. The asymmetry of \(\pm 1\) relative to the midpoint \(\nu\) is the key signature of this class.</p>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+
+  <!-- SECTION 9 — Summary Table -->
+  <section id="s9">
+    <h2><span class="num">§9</span> Summary Table of Anomaly Classes</h2>
+
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Class</th>
+          <th>Detection Condition</th>
+          <th>Recovery Formula for x</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>A</code></td>
+          <td>\(m_1 \in \mathbb{Z},\; m_1 = 1,\; m_2 \notin \mathbb{Z}\)</td>
+          <td>\(x = (s-a)\cdot z \cdot (ra)^{-1} \bmod n\)</td>
+          <td style="color:var(--accent3)">✓ Derived</td>
+        </tr>
+        <tr>
+          <td><code>B</code></td>
+          <td>\(m_1 \in \mathbb{Z},\; m_2 \in \mathbb{Z},\; m_1 = m_2\)</td>
+          <td>\(x_i = (s-am_i)\cdot z \cdot (ram_i)^{-1} \bmod n\)<br><small>where \(m_i\) are roots of the quadratic equation</small></td>
+          <td style="color:var(--accent3)">✓ Derived</td>
+        </tr>
+        <tr>
+          <td><code>C</code></td>
+          <td>\((m_1 \in \mathbb{Z},\; m_2 \in \mathbb{Z},\; m_1 \neq m_2)\)<br>or \((m_1 \in \mathbb{Z},\; m_1 > 1,\; m_2 \notin \mathbb{Z})\)</td>
+          <td>—</td>
+          <td style="color:var(--muted)">✗ Not derived</td>
+        </tr>
+        <tr>
+          <td><code>D\(_d\)</code></td>
+          <td>\(m_1 \notin \mathbb{Z},\; d = \lfloor m_1 \rfloor\)</td>
+          <td>\(a\) candidates; search via intersection</td>
+          <td style="color:var(--accent)">⟳ Active research</td>
+        </tr>
+        <tr>
+          <td><code>E1/E2</code></td>
+          <td>\(|s_{zk} - s_{rxk}| = \lfloor s^*/2 \rfloor + 1\)</td>
+          <td>\(x_{1,2} = (s^*-c)\cdot z \cdot (rc)^{-1} \bmod n\)<br><small>for \(c \in \{a, b\}\)</small></td>
+          <td style="color:var(--accent3)">✓ Derived</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    ECDSA Research · <em>generate_transactions.py</em> — mathematical framework derived by formal code analysis ·
+    All formulas operate in the ring \(\mathbb{Z}/n\mathbb{Z}\)
+  </footer>
+
+</div>
+</body>
+</html>
