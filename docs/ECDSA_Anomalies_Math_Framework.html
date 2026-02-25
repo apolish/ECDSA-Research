@@ -6,292 +6,268 @@
 <title>ECDSA — Algebraic Anomalies: Mathematical Framework</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Cinzel:wght@400;600&display=swap');
-
-  :root {
-    --bg:        #0b0d11;
-    --surface:   #111318;
-    --border:    #1e2130;
-    --accent:    #c8a96e;
-    --accent2:   #6e9dc8;
-    --accent3:   #7ec86e;
-    --accent4:   #c86e7e;
-    --text:      #d6cebc;
-    --muted:     #7a7264;
-    --heading:   #e8dcc8;
-  }
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   html { scroll-behavior: smooth; }
 
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'EB Garamond', Georgia, serif;
+    background: #ffffff;
+    color: #1a1a1a;
+    font-family: 'EB Garamond', 'Times New Roman', Georgia, serif;
     font-size: 18px;
-    line-height: 1.75;
-    min-height: 100vh;
+    line-height: 1.8;
   }
 
-  /* ── grain overlay ── */
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
-    pointer-events: none; z-index: 9999;
-  }
-
-  /* ── layout ── */
+  /* ── layout: two-column academic margin ── */
   .page {
-    max-width: 900px;
+    max-width: 780px;
     margin: 0 auto;
-    padding: 60px 40px 100px;
+    padding: 72px 48px 96px;
   }
 
   /* ── header ── */
   header {
     text-align: center;
-    padding-bottom: 48px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 56px;
-    position: relative;
-  }
-  header::after {
-    content: '';
-    position: absolute;
-    bottom: -1px; left: 50%;
-    transform: translateX(-50%);
-    width: 80px; height: 2px;
-    background: var(--accent);
+    padding-bottom: 40px;
+    border-bottom: 2px solid #1a1a1a;
+    margin-bottom: 52px;
   }
   .kicker {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.25em;
+    font-size: 10.5px;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 20px;
+    color: #666;
+    margin-bottom: 18px;
   }
   h1 {
-    font-family: 'Cinzel', serif;
-    font-size: clamp(22px, 4vw, 34px);
+    font-family: 'EB Garamond', serif;
+    font-size: clamp(22px, 3.5vw, 30px);
     font-weight: 600;
-    color: var(--heading);
-    letter-spacing: 0.03em;
-    line-height: 1.3;
-    margin-bottom: 16px;
+    color: #111;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+    margin-bottom: 14px;
   }
   .subtitle {
-    color: var(--muted);
+    color: #555;
     font-style: italic;
-    font-size: 16px;
+    font-size: 15.5px;
+    margin-top: 8px;
   }
 
   /* ── TOC ── */
   .toc {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    padding: 24px 32px;
-    margin-bottom: 56px;
-    border-radius: 2px;
+    background: #f7f7f7;
+    border: 1px solid #ddd;
+    border-left: 3px solid #333;
+    padding: 22px 28px;
+    margin-bottom: 52px;
+    font-size: 15.5px;
   }
   .toc-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.2em;
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 14px;
+    color: #333;
+    margin-bottom: 12px;
   }
-  .toc ol {
-    padding-left: 22px;
-    font-size: 16px;
-  }
-  .toc li { margin: 4px 0; }
-  .toc a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
-  .toc a:hover { color: var(--accent); border-color: var(--accent); }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: #1a1a1a; text-decoration: none; border-bottom: 1px dotted #999; }
+  .toc a:hover { color: #000; border-bottom-color: #000; }
 
   /* ── sections ── */
-  section { margin-bottom: 64px; }
+  section { margin-bottom: 60px; }
 
   h2 {
-    font-family: 'Cinzel', serif;
-    font-size: 20px;
+    font-family: 'EB Garamond', serif;
+    font-size: 19px;
     font-weight: 600;
-    color: var(--heading);
-    margin-bottom: 28px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border);
+    color: #111;
+    margin-bottom: 22px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #ccc;
     display: flex;
-    align-items: center;
-    gap: 12px;
+    align-items: baseline;
+    gap: 10px;
   }
   h2 .num {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: var(--accent);
-    background: rgba(200,169,110,0.08);
-    border: 1px solid rgba(200,169,110,0.2);
-    padding: 2px 8px;
-    border-radius: 2px;
-    letter-spacing: 0.1em;
+    font-size: 11px;
+    font-weight: 500;
+    color: #666;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
   }
 
   h3 {
-    font-size: 17px;
+    font-size: 16.5px;
     font-weight: 600;
-    color: var(--heading);
-    margin: 32px 0 14px;
+    color: #222;
+    margin: 28px 0 12px;
     display: flex;
     align-items: center;
     gap: 10px;
   }
   h3 .badge {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    padding: 2px 10px;
-    border-radius: 20px;
-    letter-spacing: 0.05em;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 9px;
+    border-radius: 2px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
-  .badge-a  { background: rgba(126,200,110,0.12); color: var(--accent3); border: 1px solid rgba(126,200,110,0.3); }
-  .badge-b  { background: rgba(110,157,200,0.12); color: var(--accent2); border: 1px solid rgba(110,157,200,0.3); }
-  .badge-c  { background: rgba(200,110,126,0.12); color: var(--accent4); border: 1px solid rgba(200,110,126,0.3); }
-  .badge-d  { background: rgba(200,169,110,0.12); color: var(--accent);  border: 1px solid rgba(200,169,110,0.3); }
-  .badge-e  { background: rgba(180,130,200,0.12); color: #c89ae8;        border: 1px solid rgba(180,130,200,0.3); }
+  .badge-a  { background: #eaf5e8; color: #2a7a1f; border: 1px solid #b5d9b0; }
+  .badge-b  { background: #e8f0fa; color: #1a4e8a; border: 1px solid #aac4e8; }
+  .badge-c  { background: #faeaea; color: #8a1a2a; border: 1px solid #e8aaaa; }
+  .badge-d  { background: #faf4e8; color: #7a5a10; border: 1px solid #e8d5a0; }
+  .badge-e  { background: #f4eafa; color: #5a1a8a; border: 1px solid #ccaaee; }
 
-  p { margin-bottom: 14px; }
+  p { margin-bottom: 12px; text-align: justify; }
   p:last-child { margin-bottom: 0; }
 
   /* ── math blocks ── */
   .math-block {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 22px 28px;
-    margin: 20px 0;
+    background: #fafafa;
+    border: 1px solid #e0e0e0;
+    border-left: 3px solid #bbb;
+    padding: 18px 24px 18px 20px;
+    margin: 18px 0;
     overflow-x: auto;
     position: relative;
   }
   .math-block .label {
     position: absolute;
-    top: 8px; right: 14px;
+    top: 7px; right: 12px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
+    font-size: 9.5px;
+    color: #999;
     letter-spacing: 0.1em;
   }
 
   /* ── condition / recovery boxes ── */
   .box {
-    padding: 18px 24px;
-    border-radius: 3px;
-    margin: 18px 0;
+    padding: 14px 20px;
+    margin: 14px 0;
   }
   .box-detect {
-    background: rgba(110,157,200,0.05);
-    border-left: 3px solid var(--accent2);
-    border-top: 1px solid rgba(110,157,200,0.15);
-    border-bottom: 1px solid rgba(110,157,200,0.15);
-    border-right: 1px solid rgba(110,157,200,0.15);
+    background: #f0f5fb;
+    border: 1px solid #c0d5ee;
+    border-left: 3px solid #3a72b8;
   }
   .box-recover {
-    background: rgba(126,200,110,0.05);
-    border-left: 3px solid var(--accent3);
-    border-top: 1px solid rgba(126,200,110,0.15);
-    border-bottom: 1px solid rgba(126,200,110,0.15);
-    border-right: 1px solid rgba(126,200,110,0.15);
+    background: #f0f8ee;
+    border: 1px solid #b8dcb0;
+    border-left: 3px solid #2e8a20;
   }
   .box-warn {
-    background: rgba(200,110,126,0.05);
-    border-left: 3px solid var(--accent4);
-    border-top: 1px solid rgba(200,110,126,0.15);
-    border-bottom: 1px solid rgba(200,110,126,0.15);
-    border-right: 1px solid rgba(200,110,126,0.15);
+    background: #fdf6f0;
+    border: 1px solid #e8cdb0;
+    border-left: 3px solid #c07030;
   }
   .box-neutral {
-    background: rgba(200,169,110,0.05);
-    border-left: 3px solid var(--accent);
-    border-top: 1px solid rgba(200,169,110,0.15);
-    border-bottom: 1px solid rgba(200,169,110,0.15);
-    border-right: 1px solid rgba(200,169,110,0.15);
+    background: #f6f6f6;
+    border: 1px solid #d8d8d8;
+    border-left: 3px solid #777;
   }
   .box-title {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    font-size: 9.5px;
+    font-weight: 500;
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
-  .bt-detect  { color: var(--accent2); }
-  .bt-recover { color: var(--accent3); }
-  .bt-warn    { color: var(--accent4); }
-  .bt-neutral { color: var(--accent); }
+  .bt-detect  { color: #3a72b8; }
+  .bt-recover { color: #2e8a20; }
+  .bt-warn    { color: #c07030; }
+  .bt-neutral { color: #555; }
 
-  /* ── code ── */
+  /* ── inline code ── */
   code {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid var(--border);
-    padding: 1px 6px;
+    background: #f2f2f2;
+    border: 1px solid #ddd;
+    padding: 1px 5px;
     border-radius: 2px;
-    color: #c8d8e8;
+    color: #333;
   }
 
-  /* ── table ── */
+  /* ── summary table ── */
   .summary-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 15px;
-    margin: 24px 0;
+    margin: 20px 0;
+    border: 1px solid #ccc;
   }
   .summary-table th {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.1em;
+    font-family: 'EB Garamond', serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--accent);
-    background: var(--surface);
-    padding: 10px 16px;
+    color: #333;
+    background: #f0f0f0;
+    padding: 10px 14px;
     text-align: left;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid #bbb;
+    border-right: 1px solid #ddd;
   }
+  .summary-table th:last-child { border-right: none; }
   .summary-table td {
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 9px 14px;
+    border-bottom: 1px solid #e0e0e0;
+    border-right: 1px solid #e8e8e8;
     vertical-align: top;
   }
+  .summary-table td:last-child { border-right: none; }
   .summary-table tr:last-child td { border-bottom: none; }
-  .summary-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .summary-table tr:nth-child(even) td { background: #fafafa; }
 
-  /* ── divider ── */
+  /* ── section divider ── */
   .divider {
     border: none;
-    border-top: 1px solid var(--border);
-    margin: 48px 0;
+    border-top: 1px solid #d0d0d0;
+    margin: 44px 0;
     position: relative;
   }
   .divider::after {
-    content: '✦';
+    content: '§';
     position: absolute;
     top: 50%; left: 50%;
-    transform: translate(-50%,-50%);
-    background: var(--bg);
-    padding: 0 12px;
-    color: var(--muted);
-    font-size: 12px;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    padding: 0 14px;
+    color: #bbb;
+    font-family: 'EB Garamond', serif;
+    font-size: 16px;
   }
 
-  /* ── footnote ── */
+  /* ── footer ── */
   footer {
     text-align: center;
-    color: var(--muted);
-    font-size: 14px;
+    color: #888;
+    font-size: 13.5px;
     font-style: italic;
-    padding-top: 32px;
-    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    border-top: 1px solid #ccc;
+    line-height: 1.6;
+  }
+
+  /* ── print optimisation ── */
+  @media print {
+    body { font-size: 11pt; }
+    .page { padding: 0; }
+    .math-block, .box { break-inside: avoid; }
+    a { color: inherit; }
   }
 </style>
 </head>
@@ -793,31 +769,31 @@
           <td><code>A</code></td>
           <td>\(m_1 \in \mathbb{Z},\; m_1 = 1,\; m_2 \notin \mathbb{Z}\)</td>
           <td>\(x = (s-a)\cdot z \cdot (ra)^{-1} \bmod n\)</td>
-          <td style="color:var(--accent3)">✓ Derived</td>
+          <td style="color:#2e8a20; font-weight:500">✓ Derived</td>
         </tr>
         <tr>
           <td><code>B</code></td>
           <td>\(m_1 \in \mathbb{Z},\; m_2 \in \mathbb{Z},\; m_1 = m_2\)</td>
           <td>\(x_i = (s-am_i)\cdot z \cdot (ram_i)^{-1} \bmod n\)<br><small>where \(m_i\) are roots of the quadratic equation</small></td>
-          <td style="color:var(--accent3)">✓ Derived</td>
+          <td style="color:#2e8a20; font-weight:500">✓ Derived</td>
         </tr>
         <tr>
           <td><code>C</code></td>
           <td>\((m_1 \in \mathbb{Z},\; m_2 \in \mathbb{Z},\; m_1 \neq m_2)\)<br>or \((m_1 \in \mathbb{Z},\; m_1 > 1,\; m_2 \notin \mathbb{Z})\)</td>
           <td>—</td>
-          <td style="color:var(--muted)">✗ Not derived</td>
+          <td style="color:#999">✗ Not derived</td>
         </tr>
         <tr>
           <td><code>D\(_d\)</code></td>
           <td>\(m_1 \notin \mathbb{Z},\; d = \lfloor m_1 \rfloor\)</td>
           <td>\(a\) candidates; search via intersection</td>
-          <td style="color:var(--accent)">⟳ Active research</td>
+          <td style="color:#c07030; font-weight:500">⟳ Active research</td>
         </tr>
         <tr>
           <td><code>E1/E2</code></td>
           <td>\(|s_{zk} - s_{rxk}| = \lfloor s^*/2 \rfloor + 1\)</td>
           <td>\(x_{1,2} = (s^*-c)\cdot z \cdot (rc)^{-1} \bmod n\)<br><small>for \(c \in \{a, b\}\)</small></td>
-          <td style="color:var(--accent3)">✓ Derived</td>
+          <td style="color:#2e8a20; font-weight:500">✓ Derived</td>
         </tr>
       </tbody>
     </table>
