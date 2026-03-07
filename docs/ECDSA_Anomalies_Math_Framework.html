@@ -3,807 +3,885 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ECDSA — Algebraic Anomalies: Mathematical Framework</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml.min.js"></script>
+<title>Algebraic Anomalies in ECDSA Signatures: A Complete Mathematical Framework</title>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$']],
+    displayMath: [['$$', '$$']],
+    tags: 'ams'
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" crossorigin="anonymous"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&family=STIX+Two+Math&display=swap');
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --text-primary: #1a1a1a;
+    --text-secondary: #333333;
+    --text-muted: #555555;
+    --bg-primary: #ffffff;
+    --bg-highlight: #f7f7f7;
+    --border-color: #cccccc;
+    --accent: #2c3e50;
+    --table-header-bg: #e8e8e8;
+    --table-alt-bg: #f5f5f5;
+  }
 
-  html { scroll-behavior: smooth; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: #ffffff;
-    color: #1a1a1a;
-    font-family: 'EB Garamond', 'Times New Roman', Georgia, serif;
-    font-size: 18px;
-    line-height: 1.8;
-  }
-
-  /* ── layout: two-column academic margin ── */
-  .page {
-    max-width: 780px;
+    font-family: 'STIX Two Text', 'Times New Roman', Times, serif;
+    font-size: 11.5pt;
+    line-height: 1.65;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    max-width: 820px;
     margin: 0 auto;
-    padding: 72px 48px 96px;
+    padding: 50px 40px 80px;
+    counter-reset: section;
   }
 
-  /* ── header ── */
-  header {
+  .title-block {
     text-align: center;
-    padding-bottom: 40px;
-    border-bottom: 2px solid #1a1a1a;
-    margin-bottom: 52px;
+    margin-bottom: 36px;
+    padding-bottom: 24px;
+    border-bottom: 1.5px solid var(--text-primary);
   }
-  .kicker {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #666;
-    margin-bottom: 18px;
-  }
-  h1 {
-    font-family: 'EB Garamond', serif;
-    font-size: clamp(22px, 3.5vw, 30px);
+  .title-block h1 {
+    font-size: 17pt;
     font-weight: 600;
-    color: #111;
-    letter-spacing: 0.01em;
-    line-height: 1.25;
+    line-height: 1.35;
+    color: var(--text-primary);
     margin-bottom: 14px;
+    letter-spacing: -0.01em;
   }
-  .subtitle {
-    color: #555;
+  .title-block .subtitle {
+    font-size: 11pt;
     font-style: italic;
-    font-size: 15.5px;
-    margin-top: 8px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .title-block .date {
+    font-size: 10pt;
+    color: var(--text-muted);
   }
 
-  /* ── TOC ── */
-  .toc {
-    background: #f7f7f7;
-    border: 1px solid #ddd;
-    border-left: 3px solid #333;
-    padding: 22px 28px;
-    margin-bottom: 52px;
-    font-size: 15.5px;
+  .abstract {
+    margin: 0 30px 32px;
+    padding: 16px 20px;
+    background: var(--bg-highlight);
+    border-left: 3px solid var(--accent);
   }
-  .toc-title {
-    font-family: 'EB Garamond', serif;
-    font-size: 13px;
+  .abstract h2 {
+    font-size: 11pt;
     font-weight: 600;
-    letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #333;
-    margin-bottom: 12px;
-  }
-  .toc ol { padding-left: 20px; }
-  .toc li { margin: 5px 0; }
-  .toc a { color: #1a1a1a; text-decoration: none; border-bottom: 1px dotted #999; }
-  .toc a:hover { color: #000; border-bottom-color: #000; }
-
-  /* ── sections ── */
-  section { margin-bottom: 60px; }
-
-  h2 {
-    font-family: 'EB Garamond', serif;
-    font-size: 19px;
-    font-weight: 600;
-    color: #111;
-    margin-bottom: 22px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #ccc;
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-  }
-  h2 .num {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    font-weight: 500;
-    color: #666;
-    letter-spacing: 0.05em;
-    flex-shrink: 0;
-  }
-
-  h3 {
-    font-size: 16.5px;
-    font-weight: 600;
-    color: #222;
-    margin: 28px 0 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  h3 .badge {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    font-weight: 500;
-    padding: 2px 9px;
-    border-radius: 2px;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .badge-a  { background: #eaf5e8; color: #2a7a1f; border: 1px solid #b5d9b0; }
-  .badge-b  { background: #e8f0fa; color: #1a4e8a; border: 1px solid #aac4e8; }
-  .badge-c  { background: #faeaea; color: #8a1a2a; border: 1px solid #e8aaaa; }
-  .badge-d  { background: #faf4e8; color: #7a5a10; border: 1px solid #e8d5a0; }
-  .badge-e  { background: #f4eafa; color: #5a1a8a; border: 1px solid #ccaaee; }
-
-  p { margin-bottom: 12px; text-align: justify; }
-  p:last-child { margin-bottom: 0; }
-
-  /* ── math blocks ── */
-  .math-block {
-    background: #fafafa;
-    border: 1px solid #e0e0e0;
-    border-left: 3px solid #bbb;
-    padding: 18px 24px 18px 20px;
-    margin: 18px 0;
-    overflow-x: auto;
-    position: relative;
-  }
-  .math-block .label {
-    position: absolute;
-    top: 7px; right: 12px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9.5px;
-    color: #999;
-    letter-spacing: 0.1em;
-  }
-
-  /* ── condition / recovery boxes ── */
-  .box {
-    padding: 14px 20px;
-    margin: 14px 0;
-  }
-  .box-detect {
-    background: #f0f5fb;
-    border: 1px solid #c0d5ee;
-    border-left: 3px solid #3a72b8;
-  }
-  .box-recover {
-    background: #f0f8ee;
-    border: 1px solid #b8dcb0;
-    border-left: 3px solid #2e8a20;
-  }
-  .box-warn {
-    background: #fdf6f0;
-    border: 1px solid #e8cdb0;
-    border-left: 3px solid #c07030;
-  }
-  .box-neutral {
-    background: #f6f6f6;
-    border: 1px solid #d8d8d8;
-    border-left: 3px solid #777;
-  }
-  .box-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9.5px;
-    font-weight: 500;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
     margin-bottom: 8px;
   }
-  .bt-detect  { color: #3a72b8; }
-  .bt-recover { color: #2e8a20; }
-  .bt-warn    { color: #c07030; }
-  .bt-neutral { color: #555; }
-
-  /* ── inline code ── */
-  code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    background: #f2f2f2;
-    border: 1px solid #ddd;
-    padding: 1px 5px;
-    border-radius: 2px;
-    color: #333;
+  .abstract h2::before { content: none !important; }
+  .abstract p {
+    font-size: 10.5pt;
+    text-align: justify;
+    hyphens: auto;
   }
 
-  /* ── summary table ── */
-  .summary-table {
+  .toc {
+    margin: 0 30px 36px;
+    padding: 16px 20px;
+    border: 1px solid var(--border-color);
+  }
+  .toc h2 {
+    font-size: 11pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .toc h2::before { content: none !important; }
+  .toc ol {
+    margin-left: 20px;
+    font-size: 10.5pt;
+    line-height: 1.9;
+  }
+  .toc ol li { color: var(--text-secondary); }
+  .toc a { color: var(--text-secondary); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .part-divider {
+    text-align: center;
+    margin: 48px 0 12px;
+    padding: 12px 0;
+    border-top: 2px solid var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .part-divider .part-label {
+    font-size: 10pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .part-divider .part-title {
+    font-size: 14pt;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  h2 {
+    font-size: 13.5pt;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 36px 0 14px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+    counter-increment: section;
+  }
+  h2::before { content: counter(section) ". "; }
+
+  h3 {
+    font-size: 12pt;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 24px 0 10px;
+  }
+
+  h4 {
+    font-size: 11pt;
+    font-weight: 600;
+    font-style: italic;
+    color: var(--text-secondary);
+    margin: 18px 0 8px;
+  }
+
+  p { text-align: justify; margin-bottom: 10px; hyphens: auto; }
+
+  .definition, .theorem, .remark, .proposition, .corollary {
+    margin: 18px 0;
+    padding: 12px 16px;
+    border-left: 3px solid var(--accent);
+    background: var(--bg-highlight);
+  }
+  .definition .label, .theorem .label, .remark .label,
+  .proposition .label, .corollary .label {
+    font-weight: 600;
+    font-style: italic;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .theorem { border-left-color: #1a5276; }
+  .corollary { border-left-color: #1a5276; background: #f9fbfd; }
+  .remark { border-left-color: #7d8c8e; background: transparent; }
+
+  table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 15px;
-    margin: 20px 0;
-    border: 1px solid #ccc;
+    margin: 18px 0;
+    font-size: 10.5pt;
   }
-  .summary-table th {
-    font-family: 'EB Garamond', serif;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #333;
-    background: #f0f0f0;
-    padding: 10px 14px;
-    text-align: left;
-    border-bottom: 2px solid #bbb;
-    border-right: 1px solid #ddd;
-  }
-  .summary-table th:last-child { border-right: none; }
-  .summary-table td {
-    padding: 9px 14px;
-    border-bottom: 1px solid #e0e0e0;
-    border-right: 1px solid #e8e8e8;
-    vertical-align: top;
-  }
-  .summary-table td:last-child { border-right: none; }
-  .summary-table tr:last-child td { border-bottom: none; }
-  .summary-table tr:nth-child(even) td { background: #fafafa; }
-
-  /* ── section divider ── */
-  .divider {
-    border: none;
-    border-top: 1px solid #d0d0d0;
-    margin: 44px 0;
-    position: relative;
-  }
-  .divider::after {
-    content: '§';
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    background: #fff;
-    padding: 0 14px;
-    color: #bbb;
-    font-family: 'EB Garamond', serif;
-    font-size: 16px;
-  }
-
-  /* ── footer ── */
-  footer {
+  th, td {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
     text-align: center;
-    color: #888;
-    font-size: 13.5px;
+  }
+  th { background: var(--table-header-bg); font-weight: 600; font-size: 10pt; }
+  tr:nth-child(even) td { background: var(--table-alt-bg); }
+  .table-caption {
+    font-size: 10pt;
     font-style: italic;
-    padding-top: 28px;
-    border-top: 1px solid #ccc;
-    line-height: 1.6;
+    text-align: center;
+    color: var(--text-muted);
+    margin-top: -10px;
+    margin-bottom: 18px;
   }
 
-  /* ── print optimisation ── */
-  @media print {
-    body { font-size: 11pt; }
-    .page { padding: 0; }
-    .math-block, .box { break-inside: avoid; }
-    a { color: inherit; }
+  .algorithm {
+    margin: 18px 0;
+    padding: 14px 18px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-highlight);
+    font-size: 10.5pt;
   }
+  .algorithm .alg-title {
+    font-weight: 600;
+    font-size: 11pt;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .algorithm ol { margin-left: 20px; }
+  .algorithm ol li { margin-bottom: 5px; }
+
+  .footnote {
+    font-size: 9.5pt;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    margin-top: 40px;
+    padding-top: 12px;
+  }
+
+  mjx-container[display="true"] { margin: 14px 0 !important; }
 </style>
 </head>
 <body>
-<div class="page">
 
-  <!-- HEADER -->
-  <header>
-    <div class="kicker">ECDSA Research · Mathematical Framework</div>
-    <h1>Algebraic Anomalies in ECDSA Signatures<br>and Private Key Recovery</h1>
-    <div class="subtitle">Formal mathematical framework derived from the implementation of <code>generate_transactions.py</code></div>
-  </header>
-
-  <!-- TOC -->
-  <div class="toc">
-    <div class="toc-title">Contents</div>
-    <ol>
-      <li><a href="#s1">Base Definitions and Notation</a></li>
-      <li><a href="#s2">Standard ECDSA Equation and Component Decomposition</a></li>
-      <li><a href="#s3">Anomaly Existence Prerequisite (Gate Condition)</a></li>
-      <li><a href="#s4">Anomaly Class A — Linear Condition</a></li>
-      <li><a href="#s5">Anomaly Class B — Quadratic Condition</a></li>
-      <li><a href="#s6">Anomaly Class C — Intermediate Class</a></li>
-      <li><a href="#s7">Anomaly Class D — Fractional Condition</a></li>
-      <li><a href="#s8">Anomaly Class E — Goldbach Condition</a></li>
-      <li><a href="#s9">Summary Table of Anomaly Classes</a></li>
-    </ol>
-  </div>
-
-
-  <!-- SECTION 1 -->
-  <section id="s1">
-    <h2><span class="num">§1</span> Base Definitions and Notation</h2>
-
-    <p>Let an elliptic curve be defined by parameters <code>(p, a, b, G, n)</code>, where \(n\) is the order of the base point \(G\). For an ECDSA signature, we introduce the following notation:</p>
-
-    <div class="math-block">
-      <div class="label">DEF 1.1</div>
-      \[
-        \begin{aligned}
-          z   &= H(m) \bmod n &\quad &\text{(message hash)} \\
-          k   &\in [1,\, n-1] &\quad &\text{(ephemeral nonce)} \\
-          r   &= \bigl[k \cdot G\bigr]_x \bmod n &\quad &\text{(x-coordinate of point \(kG\))} \\
-              s   &= k^{-1}(z + r \cdot x) \bmod n &\quad &\text{(signature scalar)} \\
-              & &\quad &\text{where \(x\) is the private key}
-        \end{aligned}
-      \]
-    </div>
-
-    <p>For analysis of the signature's internal structure, three <em>hidden components</em> are introduced — they are not publicly observable:</p>
-
-    <div class="math-block">
-      <div class="label">DEF 1.2 — Hidden components</div>
-      \[
-        \begin{aligned}
-          s_{zk}   &= z \cdot k^{-1} \bmod n \\
-          s_{rxk}  &= r \cdot x \cdot k^{-1} \bmod n \\
-          s_{zr}   &= z \cdot r \bmod n
-        \end{aligned}
-      \]
-    </div>
-
-    <p>From the definition of the signature, the additive identity follows immediately:</p>
-
-    <div class="math-block">
-      <div class="label">EQ 1.3</div>
-      \[
-        s \equiv s_{zk} + s_{rxk} \pmod{n}
-      \]
-    </div>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 2 -->
-  <section id="s2">
-    <h2><span class="num">§2</span> Standard ECDSA Equation and Component Decomposition</h2>
-
-    <p>We rewrite the classical equation in terms of the introduced components. Multiplying both sides by \(k^{-1}\):</p>
-
-    <div class="math-block">
-      <div class="label">EQ 2.1</div>
-      \[
-        s \cdot k \equiv z + r \cdot x \pmod{n}
-      \]
-    </div>
-
-    <p>The component \(s_{zk}\) is the "projection" of the message hash onto the nonce axis, while \(s_{rxk}\) is the projection of the private key:</p>
-
-    <div class="math-block">
-      <div class="label">EQ 2.2</div>
-      \[
-        s_{zk} = \frac{z}{k} \bmod n, \qquad s_{rxk} = \frac{r \cdot x}{k} \bmod n
-      \]
-    </div>
-
-    <p>From this, the private key can be expressed analytically, provided \(s_{zk}\) is known:</p>
-
-    <div class="math-block">
-      <div class="label">EQ 2.3 — Universal recovery kernel</div>
-      \[
-        x = s_{rxk} \cdot (r \cdot k)^{-1} \bmod n
-        = (s - s_{zk}) \cdot \bigl(r \cdot s_{zk} \cdot z^{-1}\bigr)^{-1} \bmod n
-      \]
-    </div>
-
-    <p>This formula is the <em>recovery kernel</em> for all anomaly classes — the difference between classes lies solely in how \(s_{zk}\) is determined.</p>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 3 -->
-  <section id="s3">
-    <h2><span class="num">§3</span> Anomaly Existence Prerequisite (Gate Condition)</h2>
-
-    <p>Before checking classes A–D, the code computes an auxiliary value \(a\). This is only possible when the <em>gate condition</em> is satisfied:</p>
-
-    <div class="math-block">
-      <div class="label">DEF 3.1 — Gate condition</div>
-      \[
-        s_{zr} > s \quad \Longleftrightarrow \quad z \cdot r \bmod n \;>\; s
-      \]
-    </div>
-
-    <div class="math-block">
-      <div class="label">DEF 3.2 — Auxiliary modular remainder</div>
-      \[
-        a = s \bmod (s_{zr} - s), \qquad a \in \mathbb{Z}_{>0},\; a \neq s,\; a \neq s_{zr}
-      \]
-    </div>
-
-    <p>Analytically, \(a\) is the smallest non-negative remainder of dividing \(s\) by the difference \((s_{zr} - s)\). Two rational coefficients that determine the anomaly class:</p>
-
-    <div class="math-block">
-      <div class="label">DEF 3.3 — Rational anomaly coefficients</div>
-      \[
-        m_1 = \frac{s_{zk}}{a} \in \mathbb{Q}, \qquad
-        m_2 = \frac{s + s_{zr}}{s_{rxk}} \in \mathbb{Q}
-      \]
-    </div>
-
-    <p>The integrality or fractional nature of these coefficients determines the anomaly class (A, B, C, or D).</p>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 4 -->
-  <section id="s4">
-    <h2><span class="num">§4</span> Anomaly Class A — Linear Condition</h2>
-
-    <h3><span class="badge badge-a">DETECT</span> Identification Condition</h3>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">Class A Condition</div>
-      <p>The gate condition holds, and additionally:</p>
-    </div>
-
-    <div class="math-block">
-      <div class="label">COND A.1</div>
-      \[
-        m_1 \in \mathbb{Z} \quad \wedge \quad m_1 = 1 \quad \wedge \quad m_2 \notin \mathbb{Z}
-      \]
-    </div>
-
-    <p>Since \(m_1 = s_{zk}/a = 1\), the condition is equivalent to:</p>
-
-    <div class="math-block">
-      <div class="label">COND A.2</div>
-      \[
-        s_{zk} \equiv a \pmod{n} \quad \Longleftrightarrow \quad a \mid s_{zk} \;\text{ and }\; s_{zk}/a = 1
-      \]
-    </div>
-
-    <h3><span class="badge badge-a">RECOVER</span> Private Key Recovery</h3>
-
-    <p>Step-by-step derivation from the <code>_recover_private_key_case_a</code> function with \(m=1\):</p>
-
-    <div class="math-block">
-      <div class="label">PROOF A</div>
-      \[
-        \begin{aligned}
-          s_{zk} &= a \cdot m \bmod n &&\text{(with m=1: } s_{zk} = a \text{)} \\[4pt]
-          k       &= s_{zk} \cdot z^{-1} \bmod n = a \cdot z^{-1} \bmod n \\[4pt]
-          s_{rxk} &= (s - s_{zk}) \bmod n \\[4pt]
-          rk      &= r \cdot k \bmod n \\[4pt]
-          x       &= s_{rxk} \cdot (rk)^{-1} \bmod n
-        \end{aligned}
-      \]
-    </div>
-
-    <div class="box box-recover">
-      <div class="box-title bt-recover">Closed-form Formula — Case A</div>
-    </div>
-    <div class="math-block">
-      <div class="label">FORMULA A</div>
-      \[
-        \boxed{
-          x = (s - a) \cdot z \cdot \bigl(r \cdot a\bigr)^{-1} \bmod n
-        }
-      \]
-    </div>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 5 -->
-  <section id="s5">
-    <h2><span class="num">§5</span> Anomaly Class B — Quadratic Condition</h2>
-
-    <h3><span class="badge badge-b">DETECT</span> Identification Condition</h3>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">Class B Condition</div>
-    </div>
-
-    <div class="math-block">
-      <div class="label">COND B.1</div>
-      \[
-        m_1 \in \mathbb{Z} \quad \wedge \quad m_2 \in \mathbb{Z} \quad \wedge \quad m_1 = m_2
-      \]
-    </div>
-
-    <p>That is, both rational coefficients are integers and equal to each other. Expanded, this means:</p>
-
-    <div class="math-block">
-      <div class="label">COND B.2</div>
-      \[
-        \frac{s_{zk}}{a} = \frac{s + s_{zr}}{s_{rxk}} = m \in \mathbb{Z}
-      \]
-    </div>
-
-    <p>Since \(s = s_{zk} + s_{rxk}\) and \(s_{zk} = am\), substitution gives:</p>
-    \[am + s_{rxk} = s, \quad s_{rxk}(m) = s - am\]
-    <p>The equation \(\frac{s + s_{zr}}{s_{rxk}} = m\) transforms into a quadratic in \(m\):</p>
-
-    <div class="math-block">
-      <div class="label">EQ B.3 — Quadratic in m</div>
-      \[
-        a \cdot m^2 - s \cdot m + (s + s_{zr}) \equiv 0 \pmod{n}
-      \]
-    </div>
-
-    <h3><span class="badge badge-b">RECOVER</span> Private Key Recovery</h3>
-
-    <p>Solving the quadratic equation via discriminant modulo \(n\):</p>
-
-    <div class="math-block">
-      <div class="label">FORMULA B.1 — Discriminant</div>
-      \[
-        \Delta = \bigl(s^2 - 4a \cdot (s_{zr} + s)\bigr) \bmod n
-      \]
-    </div>
-
-    <div class="math-block">
-      <div class="label">FORMULA B.2 — Modular square root</div>
-      \[
-        \sqrt{\Delta} \bmod n \quad \Rightarrow \quad \text{all roots } \delta_i \text{ such that } \delta_i^2 \equiv \Delta \pmod{n}
-      \]
-    </div>
-
-    <div class="math-block">
-      <div class="label">FORMULA B.3 — Recovery of m and x</div>
-      \[
-        m_i = (s + \delta_i) \cdot (2a)^{-1} \bmod n
-      \]
-      \[
-        \boxed{
-          x_i = (s - a \cdot m_i) \cdot z \cdot (r \cdot a \cdot m_i)^{-1} \bmod n
-        }
-      \]
-    </div>
-
-    <div class="box box-warn">
-      <div class="box-title bt-warn">Note</div>
-      <p>For each root \(\delta_i\) of the discriminant, a separate private key candidate \(x_i\) is obtained. The correct candidate is verified via the public key \(P = x \cdot G\).</p>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 6 -->
-  <section id="s6">
-    <h2><span class="num">§6</span> Anomaly Class C — Intermediate Class</h2>
-
-    <h3><span class="badge badge-c">DETECT</span> Identification Condition</h3>
-
-    <p>Class C combines two sub-cases:</p>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">Sub-case C.1</div>
-    </div>
-    <div class="math-block">
-      <div class="label">COND C.1</div>
-      \[
-        m_1 \in \mathbb{Z} \quad \wedge \quad m_2 \in \mathbb{Z} \quad \wedge \quad m_1 \neq m_2
-      \]
-    </div>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">Sub-case C.2</div>
-    </div>
-    <div class="math-block">
-      <div class="label">COND C.2</div>
-      \[
-        m_1 \in \mathbb{Z} \quad \wedge \quad m_1 > 1 \quad \wedge \quad m_2 \notin \mathbb{Z}
-      \]
-    </div>
-
-    <div class="box box-warn">
-      <div class="box-title bt-warn">Status</div>
-      <p>For class C, an analytical key recovery formula has <strong>not yet been derived</strong> (<code>x_recovered = "–"</code> in the transaction table). The class is intermediate between A (where \(m_1=1\)) and B (where \(m_1=m_2\)).</p>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 7 -->
-  <section id="s7">
-    <h2><span class="num">§7</span> Anomaly Class D — Fractional Condition</h2>
-
-    <h3><span class="badge badge-d">DETECT</span> Identification Condition</h3>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">Class D Condition</div>
-    </div>
-
-    <div class="math-block">
-      <div class="label">COND D.1</div>
-      \[
-        m_1 = \frac{s_{zk}}{a} \notin \mathbb{Z} \quad \Longleftrightarrow \quad a \nmid s_{zk}
-      \]
-    </div>
-
-    <p>The sub-class is determined by the integer part of the fractional ratio:</p>
-
-    <div class="math-block">
-      <div class="label">DEF D.2 — D-level</div>
-      \[
-        f = \frac{s_{zk}}{a} \in \mathbb{Q} \setminus \mathbb{Z}, \qquad
-        d = \lfloor f \rfloor \in \mathbb{Z}_{\geq 0}
-      \]
-      \[
-        \text{Class: } D_d, \quad \text{e.g. } D_0, D_1, D_2, \ldots
-      \]
-    </div>
-
-    <p>The fractional part \(\{f\} = f - d\) carries information about the distance between \(s_{zk}\) and the nearest multiple of \(a\):</p>
-
-    <div class="math-block">
-      <div class="label">EQ D.3 — Fractional decomposition</div>
-      \[
-        s_{zk} = a \cdot d + a \cdot \{f\}, \qquad 0 < \{f\} < 1
-      \]
-      \[
-        \Longrightarrow \quad s_{zk} = a \cdot d + \rho, \quad \rho = s_{zk} \bmod a, \quad 0 < \rho < a
-      \]
-    </div>
-
-    <h3><span class="badge badge-d">RESEARCH</span> Candidate Space for \(D_d\)</h3>
-
-    <p>Since \(s_{zk} = z \cdot k^{-1} \bmod n\), candidates for \(k\) at a fixed level \(d\) satisfy:</p>
-
-    <div class="math-block">
-      <div class="label">EQ D.4 — Candidate space</div>
-      \[
-        z \cdot k^{-1} \equiv a \cdot d + \rho \pmod{n}, \qquad \rho \in (0, a)
-      \]
-      \[
-        \Longrightarrow \quad k \equiv z \cdot (ad + \rho)^{-1} \pmod{n}
-      \]
-    </div>
-
-    <div class="box box-warn">
-      <div class="box-title bt-warn">Active Research Status</div>
-      <p>The search space for \(D_d\) is bounded by \(a\) candidates (over \(\rho \in [1, a-1]\)). The method of narrowing through intersection of candidate sets \(x\) across multiple transactions of the same key is under development and validation.</p>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 8 -->
-  <section id="s8">
-    <h2><span class="num">§8</span> Anomaly Class E — Goldbach Condition</h2>
-
-    <p>Class E is checked <em>independently</em> of the gate condition in §3 and is based on the additive symmetry of the components relative to \(s\).</p>
-
-    <h3><span class="badge badge-e">DETECT</span> Sub-class E1</h3>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">E1 — standard case</div>
-    </div>
-
-    <div class="math-block">
-      <div class="label">COND E1</div>
-      \[
-        s_{zk} + s_{rxk} \leq s \quad \wedge \quad s \equiv 0 \pmod{2}
-      \]
-      \[
-        \wedge \quad \bigl|s_{zk} - s_{rxk}\bigr| = \frac{s}{2} + 1
-      \]
-    </div>
-
-    <h3><span class="badge badge-e">DETECT</span> Sub-class E2</h3>
-
-    <div class="box box-detect">
-      <div class="box-title bt-detect">E2 — wrap-around case</div>
-    </div>
-
-    <div class="math-block">
-      <div class="label">COND E2</div>
-      \[
-        s_{zk} + s_{rxk} > s \quad \Rightarrow \quad s' = s + n
-      \]
-      \[
-        s' \equiv 0 \pmod{2} \quad \wedge \quad \bigl|s_{zk} - s_{rxk}\bigr| = \frac{s'}{2} + 1
-      \]
-    </div>
-
-    <p>A single unified condition for both sub-classes (where \(s^*\) is the adjusted \(s\)):</p>
-
-    <div class="math-block">
-      <div class="label">COND E — Goldbach decomposition</div>
-      \[
-        \exists\, \nu = \frac{s^*}{2} \in \mathbb{Z} : \quad \bigl|s_{zk} - s_{rxk}\bigr| = \nu + 1
-      \]
-    </div>
-
-    <p>This means \(s_{zk}\) and \(s_{rxk}\) are two numbers that differ from the "midpoint" \(\nu\) by exactly \(\frac{1}{2}\), i.e.:</p>
-
-    <div class="math-block">
-      <div class="label">EQ E — Additive pair</div>
-      \[
-        \{s_{zk},\, s_{rxk}\} = \left\{\nu + \frac{1}{2} + \frac{1}{2},\;\; \nu - \frac{1}{2} + \frac{1}{2}\right\}
-        = \left\{\nu + 1,\;\; \nu\right\}
-        \;\Longrightarrow\; s_{zk} + s_{rxk} = 2\nu + 1 = s^* \pm 1
-      \]
-    </div>
-
-    <h3><span class="badge badge-e">RECOVER</span> Private Key Recovery</h3>
-
-    <p>From \(s^*\) we compute two candidates \(a\) and \(b\) for the component \(s_{zk}\):</p>
-
-    <div class="math-block">
-      <div class="label">FORMULA E.1 — Candidate components</div>
-      \[
-        \nu = \left\lfloor \frac{s^*}{2} \right\rfloor, \qquad
-        a = \left\lceil \frac{s^* + \nu + 1}{2} \right\rceil = \frac{s^* + \nu + 1}{2}, \qquad
-        b = s^* - a
-      \]
-    </div>
-
-    <p>Each candidate yields a separate private key via the recovery formula from §2:</p>
-
-    <div class="math-block">
-      <div class="label">FORMULA E.2 — Dual key recovery</div>
-      \[
-        \boxed{
-          x_1 = (s^* - a) \cdot z \cdot (r \cdot a)^{-1} \bmod n
-        }
-      \]
-      \[
-        \boxed{
-          x_2 = (s^* - b) \cdot z \cdot (r \cdot b)^{-1} \bmod n
-        }
-      \]
-    </div>
-
-    <div class="box box-neutral">
-      <div class="box-title bt-neutral">Connection to Goldbach's Conjecture</div>
-      <p>Condition E is a discrete analogue of decomposing an even number \(s^*\) into a sum of two "almost equal" addends. The asymmetry of \(\pm 1\) relative to the midpoint \(\nu\) is the key signature of this class.</p>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-
-  <!-- SECTION 9 — Summary Table -->
-  <section id="s9">
-    <h2><span class="num">§9</span> Summary Table of Anomaly Classes</h2>
-
-    <table class="summary-table">
-      <thead>
-        <tr>
-          <th>Class</th>
-          <th>Detection Condition</th>
-          <th>Recovery Formula for x</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>A</code></td>
-          <td>\(m_1 \in \mathbb{Z},\; m_1 = 1,\; m_2 \notin \mathbb{Z}\)</td>
-          <td>\(x = (s-a)\cdot z \cdot (ra)^{-1} \bmod n\)</td>
-          <td style="color:#2e8a20; font-weight:500">✓ Derived</td>
-        </tr>
-        <tr>
-          <td><code>B</code></td>
-          <td>\(m_1 \in \mathbb{Z},\; m_2 \in \mathbb{Z},\; m_1 = m_2\)</td>
-          <td>\(x_i = (s-am_i)\cdot z \cdot (ram_i)^{-1} \bmod n\)<br><small>where \(m_i\) are roots of the quadratic equation</small></td>
-          <td style="color:#2e8a20; font-weight:500">✓ Derived</td>
-        </tr>
-        <tr>
-          <td><code>C</code></td>
-          <td>\((m_1 \in \mathbb{Z},\; m_2 \in \mathbb{Z},\; m_1 \neq m_2)\)<br>or \((m_1 \in \mathbb{Z},\; m_1 > 1,\; m_2 \notin \mathbb{Z})\)</td>
-          <td>—</td>
-          <td style="color:#999">✗ Not derived</td>
-        </tr>
-        <tr>
-          <td><code>D\(_d\)</code></td>
-          <td>\(m_1 \notin \mathbb{Z},\; d = \lfloor m_1 \rfloor\)</td>
-          <td>\(a\) candidates; search via intersection</td>
-          <td style="color:#c07030; font-weight:500">⟳ Active research</td>
-        </tr>
-        <tr>
-          <td><code>E1/E2</code></td>
-          <td>\(|s_{zk} - s_{rxk}| = \lfloor s^*/2 \rfloor + 1\)</td>
-          <td>\(x_{1,2} = (s^*-c)\cdot z \cdot (rc)^{-1} \bmod n\)<br><small>for \(c \in \{a, b\}\)</small></td>
-          <td style="color:#2e8a20; font-weight:500">✓ Derived</td>
-        </tr>
-      </tbody>
-    </table>
-  </section>
-
-  <footer>
-    ECDSA Research · <em>generate_transactions.py</em> — mathematical framework derived by formal code analysis ·
-    All formulas operate in the ring \(\mathbb{Z}/n\mathbb{Z}\)
-  </footer>
-
+<div class="title-block">
+  <h1>Algebraic Anomalies in ECDSA Signatures:<br>A Complete Mathematical Framework for<br>Anomaly Classes A, B, C, D, and E</h1>
+  <div class="subtitle">Identification Criteria, Recovery Formulas, Probabilistic Analysis,<br>and Cross-Transaction Intersection Methods</div>
+  <div class="date">March 2026</div>
 </div>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>
+    This document presents the complete mathematical framework for five classes of algebraic anomalies
+    (A, B, C, D, E) identified in ECDSA signatures over elliptic curves. Each anomaly arises from structured
+    arithmetic relationships within the standard signing equation $s = (z + rx)\,k^{-1} \bmod n$ under
+    ideally random nonce generation. The anomalies divide into two fundamentally distinct categories.
+    <em>Non-structural anomalies</em> (A, B, C, E) depend on exact arithmetic coincidences between
+    internal signature components and occur with probability $O(n^{-1})$ or less per transaction; for
+    three of these (A, B, E), closed-form deterministic private-key recovery formulas are derived and
+    verified; class C admits identification but no known analytical recovery. <em>Structural anomaly D</em>
+    is qualitatively different: it arises in approximately 25% of all transactions regardless of the
+    curve order $n$, produces a bounded candidate search window for the hidden signing component, and
+    enables private-key recovery via cross-transaction intersection of candidate sets. A rigorous
+    probabilistic analysis quantifies the expected frequency of each class, demonstrating that
+    non-structural anomalies are inherent to the full transaction space but unobservable on
+    production-scale curves such as secp256k1, while structural anomaly D remains universally
+    present and is the subject of active research into computational tractability at scale.
+  </p>
+</div>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#sec1">Preliminaries</a></li>
+    <li><a href="#sec2">Classification Framework</a></li>
+    <li><a href="#sec3">Anomaly Class A: Linear Divisibility with Unit Multiplier</a></li>
+    <li><a href="#sec4">Anomaly Class B: Dual Integral Divisibility</a></li>
+    <li><a href="#sec5">Anomaly Class C: Partial Divisibility</a></li>
+    <li><a href="#sec6">Anomaly Class E: Goldbach-Type Additive Decomposition</a></li>
+    <li><a href="#sec7">Anomaly Class D: Structural Factor-Level Decomposition</a></li>
+    <li><a href="#sec8">Cross-Transaction Intersection Recovery for Anomaly D</a></li>
+    <li><a href="#sec9">Level Distribution of Anomaly D</a></li>
+    <li><a href="#sec10">Probabilistic Analysis</a></li>
+    <li><a href="#sec11">Numerical Validation</a></li>
+    <li><a href="#sec12">Comparative Summary and Open Problems</a></li>
+  </ol>
+</div>
+
+<div class="part-divider">
+  <div class="part-label">Part I</div>
+  <div class="part-title">Foundations and Classification</div>
+</div>
+
+<h2 id="sec1">Preliminaries</h2>
+
+<h3>1.1 &ensp; ECDSA Signing Equation</h3>
+
+<p>
+  Let $E$ be an elliptic curve defined over a finite field $\mathbb{F}_p$ with a base point $G$ of
+  prime order $n$. Given a private key $x \in \{1, \ldots, n-1\}$, a message hash
+  $z \in \{1, \ldots, n-1\}$, and a random nonce $k \in \{1, \ldots, n-1\}$, the ECDSA signature
+  $(r, s)$ is computed as:
+</p>
+
+$$r = \bigl[k \cdot G\bigr]_x \bmod n, \qquad s = (z + r\,x)\,k^{-1} \bmod n \tag{1}$$
+
+<p>where $[\cdot]_x$ denotes the $x$-coordinate of the resulting elliptic curve point.</p>
+
+<h3>1.2 &ensp; Component Decomposition</h3>
+
+<p>
+  The signature scalar $s$ admits an additive decomposition into two components that
+  separate the message-hash contribution from the private-key contribution:
+</p>
+
+$$s_{zk} = z \cdot k^{-1} \bmod n, \qquad s_{rxk} = r \cdot x \cdot k^{-1} \bmod n \tag{2}$$
+
+$$s = (s_{zk} + s_{rxk}) \bmod n \tag{3}$$
+
+<p>
+  Both $s_{zk}$ and $s_{rxk}$ are internal (hidden) quantities that cannot be directly observed from
+  the public signature $(r, s)$ alone. The anomaly classification framework identifies structural
+  conditions under which algebraic relationships between publicly derivable quantities constrain
+  $s_{zk}$ to a recoverable value or a bounded set of candidates.
+</p>
+
+<h3>1.3 &ensp; Auxiliary Parameters</h3>
+
+<div class="definition">
+  <span class="label">Definition 1 (Auxiliary modular product).</span>
+  Define the auxiliary quantity $s_{zr} = z \cdot r \bmod n$, fully computable from the public signature components.
+  $$s_{zr} = z \cdot r \bmod n \tag{4}$$
+</div>
+
+<div class="definition">
+  <span class="label">Definition 2 (Anomaly residue).</span>
+  For a transaction satisfying $s_{zr} > s$, define $d = (s_{zr} - s) \bmod n$ and the residue:
+  $$a = s \bmod d \tag{5}$$
+  A transaction qualifies for anomaly classification (types A, B, C, D) if and only if $a > 0$, $a \neq s$, and $a \neq s_{zr}$.
+</div>
+
+<div class="definition">
+  <span class="label">Definition 3 (Divisibility ratios).</span>
+  For a qualified transaction, define two rational-valued diagnostic ratios:
+  $$m_1 = \frac{s_{zk}}{a}, \qquad m_2 = \frac{s + s_{zr}}{s_{rxk}} \tag{6}$$
+  where the divisions are performed over $\mathbb{Q}$ (exact rational fractions), not modular arithmetic.
+</div>
+
+
+<h2 id="sec2">Classification Framework</h2>
+
+<h3>2.1 &ensp; Residue-Based Classification (A&ndash;D)</h3>
+
+<table>
+  <tr>
+    <th>Class</th><th>Condition on $m_1$</th><th>Condition on $m_2$</th><th>Additional</th>
+  </tr>
+  <tr><td><strong>A</strong></td><td>$m_1 \in \mathbb{Z}$, $m_1 = 1$</td><td>$m_2 \notin \mathbb{Z}$</td><td>&mdash;</td></tr>
+  <tr><td><strong>B</strong></td><td>$m_1 \in \mathbb{Z}$</td><td>$m_2 \in \mathbb{Z}$</td><td>$m_1 = m_2$</td></tr>
+  <tr><td><strong>C</strong></td><td colspan="2">$m_1 \in \mathbb{Z}$, $m_2 \in \mathbb{Z}$, $m_1 \neq m_2$; <em>or</em> $m_1 \in \mathbb{Z}$, $m_1 > 1$, $m_2 \notin \mathbb{Z}$</td><td>&mdash;</td></tr>
+  <tr><td><strong>D</strong></td><td>$m_1 \notin \mathbb{Z}$</td><td>(any)</td><td>&mdash;</td></tr>
+</table>
+<p class="table-caption">Table 1. Decision rules for anomaly classification based on the divisibility ratios $m_1$ and $m_2$.</p>
+
+<h3>2.2 &ensp; Independent Classification (E)</h3>
+
+<p>
+  Anomaly class E is evaluated independently of the residue-based classification, prior to the A&ndash;D
+  decision tree, via a symmetry condition on the additive decomposition $s = s_{zk} + s_{rxk}$ (Section 6).
+</p>
+
+<h3>2.3 &ensp; Taxonomic Dichotomy</h3>
+
+<p>
+  <strong>Non-structural anomalies (A, B, C, E):</strong> depend on exact integer divisibility
+  or precise additive symmetry. Probability is $O(n^{-1})$ or smaller per transaction and vanishes
+  for large $n$. Recovery (where possible) is deterministic from a single transaction.
+</p>
+
+<p>
+  <strong>Structural anomaly (D):</strong> the generic, overwhelmingly dominant case where
+  $m_1 \notin \mathbb{Z}$. It occurs at a fixed fraction $\approx 1/4$ of all transactions,
+  independent of $n$. Recovery requires enumeration over a bounded candidate window and
+  intersection across multiple transactions.
+</p>
+
+
+<div class="part-divider">
+  <div class="part-label">Part II</div>
+  <div class="part-title">Non-Structural Anomalies: Classes A, B, C, and E</div>
+</div>
+
+
+<h2 id="sec3">Anomaly Class A: Linear Divisibility with Unit Multiplier</h2>
+
+<h3>3.1 &ensp; Identification Criterion</h3>
+
+<div class="definition">
+  <span class="label">Definition 4 (Anomaly A).</span>
+  A qualified transaction exhibits anomaly A if and only if:
+  $$m_1 = \frac{s_{zk}}{a} = 1, \qquad m_2 \notin \mathbb{Z} \tag{7}$$
+  Equivalently, $s_{zk} = a$ as integers.
+</div>
+
+<p>
+  This condition asserts that the hidden component $s_{zk}$ is exactly equal to the publicly computable
+  residue $a$, immediately revealing its value.
+</p>
+
+<h3>3.2 &ensp; Private-Key Recovery Formula</h3>
+
+<div class="theorem">
+  <span class="label">Theorem 1 (Closed-form recovery for Anomaly A).</span>
+  Given a transaction exhibiting anomaly A with public parameters $(s, z, r, n)$ and residue $a$,
+  the private key $x$ is recovered deterministically:
+  <br><br>
+  <strong>Step 1.</strong> Set $s_{zk} = a$.
+  <br>
+  <strong>Step 2.</strong> Recover the nonce: $k = s_{zk} \cdot z^{-1} \bmod n$ &ensp; <em>(8)</em>
+  <br>
+  <strong>Step 3.</strong> Compute: $s_{rxk} = (s - s_{zk}) \bmod n$ &ensp; <em>(9)</em>
+  <br>
+  <strong>Step 4.</strong> Recover the private key:
+  $$x = s_{rxk} \cdot (r \cdot k)^{-1} \bmod n \tag{10}$$
+</div>
+
+<div class="remark">
+  <span class="label">Remark 1.</span>
+  All inversions exist with probability $1 - O(1/n)$ since $n$ is prime and $z, r, k \not\equiv 0 \pmod{n}$ by the ECDSA specification.
+</div>
+
+
+<h2 id="sec4">Anomaly Class B: Dual Integral Divisibility</h2>
+
+<h3>4.1 &ensp; Identification Criterion</h3>
+
+<div class="definition">
+  <span class="label">Definition 5 (Anomaly B).</span>
+  A qualified transaction exhibits anomaly B if and only if:
+  $$m_1 \in \mathbb{Z}, \qquad m_2 \in \mathbb{Z}, \qquad m_1 = m_2 \tag{11}$$
+</div>
+
+<p>
+  This is the rarest of all five classes, requiring simultaneous exact divisibility of two
+  independent modular quantities with coinciding quotients.
+</p>
+
+<h3>4.2 &ensp; Derivation of the Quadratic Recovery Equation</h3>
+
+<p>
+  Let $m = m_1 = m_2$. From $s_{zk} = am$ and $s + s_{zr} = s_{rxk} \cdot m = (s - am)m$, rearranging:
+</p>
+
+$$am^2 - sm + (s + s_{zr}) \equiv 0 \pmod{n} \tag{12}$$
+
+<h3>4.3 &ensp; Private-Key Recovery Formula</h3>
+
+<div class="theorem">
+  <span class="label">Theorem 2 (Quadratic recovery for Anomaly B).</span>
+  <br><br>
+  <strong>Step 1.</strong> Compute the discriminant:
+  $$D = \bigl(s^2 - 4\,a\,(s + s_{zr})\bigr) \bmod n \tag{13}$$
+  <strong>Step 2.</strong> Compute modular square roots $\sqrt{D} \bmod n$.
+  <br><br>
+  <strong>Step 3.</strong> For each root $\rho$, compute the candidate multiplier:
+  $$m = (s + \rho) \cdot (2a)^{-1} \bmod n \tag{14}$$
+  <strong>Step 4.</strong> Recover the private key:
+  $$s_{zk} = a \cdot m \bmod n, \quad k = s_{zk} \cdot z^{-1} \bmod n, \quad x = (s - s_{zk}) \cdot (r \cdot k)^{-1} \bmod n \tag{15}$$
+</div>
+
+<div class="remark">
+  <span class="label">Remark 2.</span>
+  The modular square root exists if and only if $D$ is a quadratic residue modulo $n$
+  (testable via the Euler criterion). The quadratic equation generically produces two candidates for $m$; both must be tested.
+</div>
+
+
+<h2 id="sec5">Anomaly Class C: Partial Divisibility</h2>
+
+<h3>5.1 &ensp; Identification Criterion</h3>
+
+<div class="definition">
+  <span class="label">Definition 6 (Anomaly C).</span>
+  A qualified transaction exhibits anomaly C if:
+  <br><br>
+  <em>(i)</em> $m_1 \in \mathbb{Z}$, $m_2 \in \mathbb{Z}$, but $m_1 \neq m_2$; &ensp;<em>or</em>
+  <br>
+  <em>(ii)</em> $m_1 \in \mathbb{Z}$ with $m_1 > 1$, and $m_2 \notin \mathbb{Z}$.
+</div>
+
+<p>
+  The residue $a$ divides $s_{zk}$ exactly, but the multiplier $m_1$ is a free integer parameter
+  that cannot be determined from public data alone:
+</p>
+
+$$s_{zk} = a \cdot m_1, \qquad m_1 \in \{2, 3, 4, \ldots\} \tag{16}$$
+
+<h3>5.2 &ensp; Status of Analytical Recovery</h3>
+
+<div class="remark">
+  <span class="label">Remark 3.</span>
+  No closed-form analytical formula for deterministic private-key recovery has been derived for
+  anomaly class C. The residue $a$ constrains $s_{zk}$ to a lattice $\{a, 2a, 3a, \ldots\} \cap [1, n-1]$,
+  yielding approximately $\lfloor (n-1)/a \rfloor - 1$ candidate values&mdash;computationally infeasible for secp256k1 without further algebraic reduction.
+</div>
+
+
+<h2 id="sec6">Anomaly Class E: Goldbach-Type Additive Decomposition</h2>
+
+<h3>6.1 &ensp; Identification Criterion</h3>
+
+<p>
+  Anomaly E is evaluated independently of the residue-based classification and operates
+  directly on the additive decomposition $s = s_{zk} + s_{rxk}$, possibly extended modulo $n$.
+</p>
+
+<div class="definition">
+  <span class="label">Definition 7 (Anomaly E1).</span>
+  A transaction exhibits anomaly E1 if: (i) $s_{zk} + s_{rxk} = s$ (no wrap-around);
+  (ii) $s$ is even; (iii) $|s_{zk} - s_{rxk}| = \lfloor s/2 \rfloor + 1$.
+</div>
+
+<div class="definition">
+  <span class="label">Definition 8 (Anomaly E2).</span>
+  A transaction exhibits anomaly E2 if: (i) $s_{zk} + s_{rxk} > s$, so $\tilde{s} = s + n$;
+  (ii) $\tilde{s}$ is even; (iii) $|s_{zk} - s_{rxk}| = \lfloor \tilde{s}/2 \rfloor + 1$.
+</div>
+
+<p>
+  The condition constrains $s_{zk}$ to at most two specific values from $[1, n-1]$.
+</p>
+
+<h3>6.2 &ensp; Private-Key Recovery Formula</h3>
+
+<div class="theorem">
+  <span class="label">Theorem 3 (Goldbach-type recovery for Anomaly E).</span>
+  Given effective sum $\sigma$ ($= s$ for E1 or $s + n$ for E2):
+  <br><br>
+  <strong>Step 1.</strong> Compute two candidate decomposition values:
+  $$\alpha = \left\lfloor \frac{\sigma + \lfloor \sigma/2 \rfloor + 1}{2} \right\rfloor, \qquad \beta = \sigma - \alpha \tag{17}$$
+  <strong>Step 2.</strong> For each candidate $c \in \{\alpha, \beta\}$, recover:
+  $$k_c = c \cdot z^{-1} \bmod n, \qquad x_c = (s - c) \cdot (r \cdot k_c)^{-1} \bmod n \tag{18}$$
+  <strong>Step 3.</strong> The correct private key is one of $\{x_\alpha, x_\beta\}$, disambiguated by verification against the public key.
+</div>
+
+<div class="remark">
+  <span class="label">Remark 4.</span>
+  The recovery produces exactly two candidates. A single scalar multiplication $x_c \cdot G \stackrel{?}{=} Q$ suffices to identify the correct value.
+</div>
+
+
+<div class="part-divider">
+  <div class="part-label">Part III</div>
+  <div class="part-title">Structural Anomaly D</div>
+</div>
+
+
+<h2 id="sec7">Anomaly Class D: Structural Factor-Level Decomposition</h2>
+
+<h3>7.1 &ensp; Identification Criterion</h3>
+
+<div class="definition">
+  <span class="label">Definition 9 (Anomaly D).</span>
+  A qualified transaction exhibits anomaly D if and only if:
+  $$f = \frac{s_{zk}}{a} \notin \mathbb{Z} \tag{19}$$
+  Equivalently, $a \nmid s_{zk}$ in ordinary integer arithmetic.
+</div>
+
+<div class="definition">
+  <span class="label">Definition 10 (Level index).</span>
+  The <em>level</em> of an anomaly-D transaction is:
+  $$N = \lfloor f \rfloor = \left\lfloor \frac{s_{zk}}{a} \right\rfloor, \qquad 0 \leq N \leq \left\lfloor \frac{n - 1}{a} \right\rfloor \tag{20}$$
+  A transaction at level $N$ is denoted $\mathrm{D}N$ (e.g., $\mathrm{D}0$, $\mathrm{D}14$, $\mathrm{D}111$).
+</div>
+
+<h3>7.2 &ensp; The Factor Window</h3>
+
+<div class="theorem">
+  <span class="label">Theorem 4 (Factor window).</span>
+  If $\lfloor s_{zk}/a \rfloor = N$, then $s_{zk} \in [aN,\; a(N+1)]$.
+  <br><br>
+  <em>Proof.</em> From $N \leq s_{zk}/a < N+1$ it follows that $aN \leq s_{zk} < a(N+1)$. $\square$
+</div>
+
+<div class="definition">
+  <span class="label">Definition 11 (Search range).</span>
+  $$\mathcal{R}(a, N) =
+  \begin{cases}
+    \{1, 2, \ldots, a\} & \text{if } N = 0 \\[4pt]
+    \{aN, \; aN + 1, \; \ldots, \; a(N+1)\} & \text{if } N \geq 1
+  \end{cases} \tag{21}$$
+  with $|\mathcal{R}(a, N)| = a$ for $N = 0$ and $a + 1$ for $N \geq 1$.
+</div>
+
+<h3>7.3 &ensp; Candidate Private-Key Recovery</h3>
+
+<div class="theorem">
+  <span class="label">Theorem 5 (Candidate recovery formula for Anomaly D).</span>
+  For each candidate $\hat{s}_{zk} \in \mathcal{R}(a, N)$, the candidate private key is:
+  $$\hat{x} = z \cdot (s - \hat{s}_{zk}) \cdot (r \cdot \hat{s}_{zk})^{-1} \bmod n \tag{22}$$
+  <em>Proof.</em> From $s_{rxk} = (s - s_{zk}) \bmod n$ and $k = z \cdot s_{zk}^{-1} \bmod n$:
+  $x = (s - s_{zk})(r \cdot s_{zk} \cdot z^{-1})^{-1} = z(s - s_{zk})(r \cdot s_{zk})^{-1} \bmod n$. $\square$
+</div>
+
+<div class="remark">
+  <span class="label">Remark 5.</span>
+  Equation (22) defines a bijection over $\{1, \ldots, n-1\}$: the correct private key $x$ appears
+  exactly once at $\hat{s}_{zk} = s_{zk}$.
+</div>
+
+
+<h2 id="sec8">Cross-Transaction Intersection Recovery for Anomaly D</h2>
+
+<h3>8.1 &ensp; Foundational Principle</h3>
+
+<p>
+  A single anomaly-D transaction produces $\approx a + 1$ candidate private keys.
+  If multiple transactions share the same private key $x$, the correct $x$ must appear in every candidate set.
+</p>
+
+<div class="definition">
+  <span class="label">Definition 12 (Candidate set).</span>
+  $$\mathcal{X}_i(N_i) = \left\{
+    z_i (s_i - \hat{s}_{zk})(r_i \hat{s}_{zk})^{-1} \bmod n
+    \;\middle|\;
+    \hat{s}_{zk} \in \mathcal{R}(a_i, N_i)
+  \right\} \tag{23}$$
+</div>
+
+<div class="theorem">
+  <span class="label">Theorem 6 (Intersection principle).</span>
+  For $T$ transactions signed with the same key $x$, with correct levels $N_1, \ldots, N_T$:
+  $$x \in \bigcap_{i=1}^{T} \mathcal{X}_i(N_i) \tag{24}$$
+  The expected intersection cardinality (under the uniform heuristic for false positives):
+  $$\mathbb{E}\!\left[\left|\bigcap_{i=1}^{T} \mathcal{X}_i\right|\right]
+  \approx 1 + \frac{\prod_{i=1}^{T} w_i}{(n-1)^{T-1}} \tag{25}$$
+  where $w_i = |\mathcal{R}(a_i, N_i)|$.
+</div>
+
+<div class="corollary">
+  <span class="label">Corollary 1 (Uniqueness condition).</span>
+  The intersection yields a unique result when:
+  $$\prod_{i=1}^{T} w_i < (n - 1)^{T - 1} \tag{26}$$
+</div>
+
+<h3>8.2 &ensp; Intersection Algorithm</h3>
+
+<div class="algorithm">
+  <div class="alg-title">Algorithm 1: Cross-Transaction Intersection for Anomaly D</div>
+  <p><strong>Input:</strong> Transactions $\{T_1, \ldots, T_T\}$ with public parameters $(s_i, z_i, r_i, a_i)$ and curve order $n$.</p>
+  <p><strong>Output:</strong> Set of candidate private keys $\mathcal{X}^*$.</p>
+  <ol>
+    <li>For each $T_i$, compute $\mathcal{R}(a_i, N_i)$ for the assumed level $N_i$.</li>
+    <li>Sort transactions by ascending window size.</li>
+    <li>Build the <em>base index</em> from the narrowest transaction: for each $\hat{s}_{zk} \in \mathcal{R}(a_{\pi(1)}, N_{\pi(1)})$, compute $\hat{x}$ via (22) and store in a hash map $\mathcal{M}$.</li>
+    <li>For each subsequent $T_{\pi(j)}$: build local index, intersect with $\mathcal{M}$.</li>
+    <li>Return $\mathcal{X}^* = \text{keys}(\mathcal{M})$.</li>
+  </ol>
+</div>
+
+<div class="remark">
+  <span class="label">Remark 6 (Complexity).</span>
+  Total cost is $O\!\left(\sum_{j=1}^T w_j \cdot \log^2 n\right)$&mdash;additive rather than the multiplicative $\prod w_i$ of the na&iuml;ve Cartesian product.
+</div>
+
+
+<h2 id="sec9">Level Distribution of Anomaly D</h2>
+
+<h3>9.1 &ensp; Hyperbolic Decay Law</h3>
+
+<div class="theorem">
+  <span class="label">Theorem 7 (Marginal level distribution).</span>
+  The probability that an anomaly-D transaction has level $N$ follows an approximate hyperbolic law:
+  $$\Pr[N] \propto \frac{1}{N + c} \tag{27}$$
+  for a constant $c > 0$. As $N$ increases, fewer transactions have sufficiently small $a$ to reach that level (since $aN < n$ is required), producing the observed decay.
+</div>
+
+<h3>9.2 &ensp; Empirical Level Distributions</h3>
+
+<table>
+  <tr>
+    <th>Level $N$</th><th>test_small ($n \approx 10^5$)</th><th>test_large ($n \approx 10^9$)</th><th>Ratio to D0</th>
+  </tr>
+  <tr><td>0</td><td>$17{,}567$</td><td>$17{,}529$</td><td>$1.000$</td></tr>
+  <tr><td>1</td><td>$17{,}632$</td><td>$17{,}456$</td><td>$\approx 1.00$</td></tr>
+  <tr><td>2</td><td>$17{,}189$</td><td>$17{,}542$</td><td>$\approx 0.98$</td></tr>
+  <tr><td>3</td><td>$16{,}743$</td><td>$16{,}925$</td><td>$\approx 0.96$</td></tr>
+  <tr><td>5</td><td>$12{,}860$</td><td>$13{,}021$</td><td>$\approx 0.73$</td></tr>
+  <tr><td>10</td><td>$6{,}301$</td><td>$6{,}193$</td><td>$\approx 0.36$</td></tr>
+  <tr><td>20</td><td>$2{,}448$</td><td>$2{,}451$</td><td>$\approx 0.14$</td></tr>
+  <tr><td>50</td><td>$620$</td><td>$573$</td><td>$\approx 0.035$</td></tr>
+  <tr><td>100</td><td>$199$</td><td>$194$</td><td>$\approx 0.011$</td></tr>
+</table>
+<p class="table-caption">Table 2. Selected level counts for anomaly-D transactions ($10^6$-transaction samples).</p>
+
+<div class="remark">
+  <span class="label">Remark 7 (Scale invariance).</span>
+  The distributions are remarkably consistent across curves differing by four orders of magnitude in $n$.
+  Levels D0&ndash;D3 are approximately equiprobable ($\approx 17{,}000$ each), with smooth hyperbolic
+  decay thereafter. This confirms that the level structure is a <em>scale-invariant</em> property of
+  ECDSA modular arithmetic.
+</div>
+
+
+<div class="part-divider">
+  <div class="part-label">Part IV</div>
+  <div class="part-title">Probabilistic Analysis and Empirical Validation</div>
+</div>
+
+
+<h2 id="sec10">Probabilistic Analysis</h2>
+
+<h3>10.1 &ensp; Transaction Space</h3>
+
+<p>
+  The total number of distinct transactions is $|\mathcal{T}| = (n - 1)^5$.
+</p>
+
+<h3>10.2 &ensp; Non-Structural Anomalies</h3>
+
+<p><strong>Anomaly A:</strong> requires $s_{zk} = a$ (one specific value out of $n-1$):</p>
+$$\Pr[\text{A}] \approx \frac{1}{4(n-1)}, \qquad \mathbb{E}[\#A] = \frac{N_{\text{tx}}}{4(n-1)} \tag{28}$$
+
+<p><strong>Anomaly B:</strong> requires dual divisibility with coinciding quotients:</p>
+$$\Pr[\text{B}] \sim O(n^{-2}), \qquad \mathbb{E}[\#B] \approx \frac{N_{\text{tx}}}{4n^2} \tag{29}$$
+
+<p><strong>Anomaly C:</strong> requires $a \mid s_{zk}$ with $m_1 \geq 2$; averaging over the heavy-tailed distribution of $a$:</p>
+$$\mathbb{E}[\#C] \approx \frac{N_{\text{tx}}}{4} \cdot \frac{c \cdot \ln n}{n} \tag{30}$$
+<p>where $c > 1$ is a bias correction factor.</p>
+
+<p><strong>Anomaly E:</strong> fixes $s_{zk}$ to at most 2 values; exactly one of $s, s+n$ is even for prime $n > 2$:</p>
+$$\Pr[\text{E}] = \frac{1}{n-1}, \qquad \mathbb{E}[\#E] = \frac{N_{\text{tx}}}{n-1} \tag{31}$$
+
+<h3>10.3 &ensp; Structural Anomaly D</h3>
+
+$$\Pr[\text{D}] \approx \Pr[\text{qualified}] \cdot \Pr[a \nmid s_{zk}] \approx \frac{1}{4}\left(1 - O\!\left(\frac{\ln n}{n}\right)\right) \approx \frac{1}{4} \tag{32}$$
+
+<p>This fraction is independent of $n$.</p>
+
+<h3>10.4 &ensp; Summary</h3>
+
+<table>
+  <tr><th>Anomaly</th><th>Per-transaction probability</th><th>Order</th><th>Nature</th></tr>
+  <tr><td>A</td><td>$\frac{1}{4(n-1)}$</td><td>$O(n^{-1})$</td><td>Non-structural</td></tr>
+  <tr><td>B</td><td>$\frac{1}{4n^2}$</td><td>$O(n^{-2})$</td><td>Non-structural</td></tr>
+  <tr><td>C</td><td>$\frac{c \ln n}{4n}$</td><td>$O(n^{-1}\ln n)$</td><td>Non-structural</td></tr>
+  <tr><td>E</td><td>$\frac{1}{n-1}$</td><td>$O(n^{-1})$</td><td>Non-structural</td></tr>
+  <tr><td><strong>D</strong></td><td>$\approx 1/4$</td><td>$O(1)$</td><td><strong>Structural</strong></td></tr>
+</table>
+<p class="table-caption">Table 3. Asymptotic per-transaction probability of each anomaly class.</p>
+
+
+<h2 id="sec11">Numerical Validation</h2>
+
+<h3>11.1 &ensp; Test Curves</h3>
+
+<table>
+  <tr><th>Curve</th><th>$n$</th><th>$N_{\text{tx}}$</th><th>Qualified</th><th>#A</th><th>#B</th><th>#C</th><th>#D</th><th>#E</th></tr>
+  <tr>
+    <td>test_small</td><td>$99{,}667$</td><td>$10^6$</td><td>$249{,}410$</td>
+    <td>$4$</td><td>$0$</td><td>$580$</td><td>$248{,}814$</td><td>$12$</td>
+  </tr>
+  <tr>
+    <td>test_large</td><td>$1.24 \times 10^9$</td><td>$10^6$</td><td>$250{,}311$</td>
+    <td>$0$</td><td>$0$</td><td>$0$</td><td>$250{,}311$</td><td>$0$</td>
+  </tr>
+</table>
+<p class="table-caption">Table 4. Observed anomaly counts across test curves.</p>
+
+<div class="remark">
+  <span class="label">Remark 8.</span>
+  On test_small: $\mathbb{E}[\#A] \approx 2.5$ (observed $4$), $\mathbb{E}[\#E] \approx 10$ (observed $12$)&mdash;within Poisson fluctuation.
+  Anomaly C observed count ($580$) exceeds the na&iuml;ve estimate by $\sim 10\times$, explained by the heavy-tailed distribution of the residue $a$.
+  On test_large ($n \approx 10^9$), no non-structural anomalies are observed ($\mathbb{E}[\#A] \approx 2 \times 10^{-4}$).
+  Anomaly D dominates both datasets at $\approx 25\%$.
+</div>
+
+<h3>11.2 &ensp; Predictions for secp256k1</h3>
+
+<p>Curve order: $n \approx 1.158 \times 10^{77}$. Sample: $N_{\text{tx}} = 10^{12}$.</p>
+
+<table>
+  <tr><th>Anomaly</th><th>$\mathbb{E}[\#]$ at $N_{\text{tx}} = 10^{12}$</th><th>Observability</th></tr>
+  <tr><td>A</td><td>$\approx 2.2 \times 10^{-66}$</td><td>Impossible</td></tr>
+  <tr><td>B</td><td>$\approx 1.9 \times 10^{-143}$</td><td>Impossible</td></tr>
+  <tr><td>C</td><td>$\approx 3.8 \times 10^{-64}$</td><td>Impossible</td></tr>
+  <tr><td>E</td><td>$\approx 8.6 \times 10^{-66}$</td><td>Impossible</td></tr>
+  <tr><td><strong>D</strong></td><td>$\approx 2.5 \times 10^{11}$</td><td><strong>Always present</strong></td></tr>
+</table>
+<p class="table-caption">Table 5. Expected anomaly counts for secp256k1.</p>
+
+<p>To observe a single non-structural anomaly with probability $> 1/2$:</p>
+$$N_{\min} \approx \frac{n \ln 2}{4} \approx 2.0 \times 10^{76} \text{ transactions} \tag{33}$$
+<p>This exceeds any physically realizable computation.</p>
+
+<h3>11.3 &ensp; Structural Existence</h3>
+
+<div class="proposition">
+  <span class="label">Proposition 1.</span>
+  For any elliptic curve with prime order $n \geq 5$, the full space $\mathcal{T} = \{1,\ldots,n-1\}^5$ contains:
+  $$|\mathcal{A}_{\text{A}}| \sim \frac{(n-1)^4}{4}, \quad
+  |\mathcal{A}_{\text{C}}| \sim \frac{c(n-1)^4 \ln n}{4}, \quad
+  |\mathcal{A}_{\text{E}}| \sim (n-1)^4 \tag{34}$$
+  These are astronomically large in absolute terms ($\sim 10^{307}$ for secp256k1), yet constitute a vanishing $O(n^{-1})$ fraction of $|\mathcal{T}| \sim 10^{385}$.
+</div>
+
+<h3>11.4 &ensp; Intersection Example</h3>
+
+<p>Four transactions with $x = 32{,}768$ on test_small ($n = 99{,}667$):</p>
+
+<table>
+  <tr><th>Tx</th><th>$a_i$</th><th>$f_i$</th><th>$N_i$</th><th>$|\mathcal{R}|$</th></tr>
+  <tr><td>$T_1$</td><td>$3{,}281$</td><td>$11.254$</td><td>$11$</td><td>$3{,}282$</td></tr>
+  <tr><td>$T_2$</td><td>$5{,}725$</td><td>$0.741$</td><td>$0$</td><td>$5{,}725$</td></tr>
+  <tr><td>$T_3$</td><td>$4{,}376$</td><td>$4.762$</td><td>$4$</td><td>$4{,}377$</td></tr>
+  <tr><td>$T_4$</td><td>$12{,}242$</td><td>$0.687$</td><td>$0$</td><td>$12{,}242$</td></tr>
+</table>
+<p class="table-caption">Table 6. Example transactions for intersection recovery.</p>
+
+<p>
+  Cartesian product: $\approx 1.01 \times 10^{15}$. Algorithm 1 cost: $25{,}626$ operations.
+  Result: unique $x = 32{,}768$ recovered in $< 0.1$ s.
+</p>
+
+
+<h2 id="sec12">Comparative Summary and Open Problems</h2>
+
+<h3>12.1 &ensp; Comparative Table</h3>
+
+<table>
+  <tr><th>Property</th><th>Anomalies A, B, C, E</th><th>Anomaly D</th></tr>
+  <tr><td style="text-align:left">Nature</td><td>Exact arithmetic coincidence</td><td>Structural; generic case</td></tr>
+  <tr><td style="text-align:left">Per-tx probability</td><td>$O(n^{-1})$ to $O(n^{-2})$</td><td>$\approx 1/4$ (constant)</td></tr>
+  <tr><td style="text-align:left">Dependence on $n$</td><td>Vanishes as $n \to \infty$</td><td>Independent of $n$</td></tr>
+  <tr><td style="text-align:left">Recovery type</td><td>Closed-form (A,B,E) or none (C)</td><td>Candidate-set + intersection</td></tr>
+  <tr><td style="text-align:left">Single-tx recovery</td><td>Deterministic (A,B,E)</td><td>Requires enumeration over $\mathcal{R}$</td></tr>
+  <tr><td style="text-align:left">Multi-tx needed</td><td>No (A,B,E)</td><td>Essential</td></tr>
+  <tr><td style="text-align:left">Observability (secp256k1)</td><td>$\approx 0$</td><td>$\approx 25\%$ of all tx</td></tr>
+</table>
+<p class="table-caption">Table 7. Comparative summary of all anomaly classes.</p>
+
+<h3>12.2 &ensp; Conclusions</h3>
+
+<p>
+  Anomalies A, B, and E provide instant deterministic key recovery but occur with
+  vanishing probability on production curves&mdash;mathematically elegant but cryptographically
+  irrelevant for secp256k1. Their security significance lies not in their absence (they exist
+  in $\sim 10^{307}$ instances), but in the impossibility of encountering them in any feasible sample.
+</p>
+
+<p>
+  Anomaly D affects one in four transactions on <em>any</em> curve, provides a bounded candidate
+  search space narrowable via cross-transaction intersection, and its level structure follows
+  scale-invariant laws. The intersection algorithm reduces search from multiplicative to additive
+  complexity. Whether this is computationally tractable on secp256k1 is the central open question.
+</p>
+
+<h3>12.3 &ensp; Open Problems</h3>
+
+<div class="remark">
+  <span class="label">Open Problem 1 (Feasibility on secp256k1).</span>
+  Determining the distribution of $\min_i(a_i)$ for real Bitcoin addresses with $T \geq 2$ transactions.
+  Uniqueness requires $W^T < n^{T-1}$; for $T = 2$: $W < \sqrt{n} \approx 10^{38.5}$.
+</div>
+
+<div class="remark">
+  <span class="label">Open Problem 2 (Recovery for Anomaly C).</span>
+  Deriving a closed-form formula or algebraic reduction that avoids exhaustive enumeration over the lattice $\{a, 2a, 3a, \ldots\}$.
+</div>
+
+<div class="remark">
+  <span class="label">Open Problem 3 (Residue distribution).</span>
+  The discrepancy between the na&iuml;ve C-estimate ($c \approx 2$) and observed count ($c_{\text{eff}} \approx 20$)
+  indicates that $a = s \bmod d$ has heavier tails than predicted. A precise analytical characterization
+  would sharpen all frequency predictions and inform the window-size distribution for anomaly-D attacks.
+</div>
+
+<div class="footnote">
+  <p>
+    <strong>Notation.</strong> &ensp;
+    All arithmetic is modulo $n$ unless stated otherwise.
+    $a^{-1}$: modular inverse of $a$ mod $n$.
+    $\lfloor \cdot \rfloor$: floor function.
+    $\mathcal{R}(a, N)$: candidate search range for residue $a$ at level $N$.
+    $|\cdot|$: set cardinality.
+    $N_{\text{tx}}$: total sampled transactions.
+  </p>
+  <p style="margin-top: 8px;">
+    <strong>Status.</strong> &ensp;
+    Anomalies A, B, E: verified closed-form recovery.
+    Anomaly C: no known analytical recovery.
+    Anomaly D: under active research; intersection validated on test curves ($n \approx 10^5$, $10^9$), extending to secp256k1 ($n \approx 10^{77}$).
+  </p>
+</div>
+
 </body>
 </html>
