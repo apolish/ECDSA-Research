@@ -250,8 +250,12 @@ window.MathJax = {
     verified; class C admits identification but no known analytical recovery. <em>Structural anomaly D</em>
     is qualitatively different: it arises in approximately 25% of all transactions regardless of the
     curve order $n$, produces a bounded candidate search window for the hidden signing component, and
-    enables private-key recovery via cross-transaction intersection of candidate sets. A rigorous
-    probabilistic analysis quantifies the expected frequency of each class, demonstrating that
+    enables private-key recovery via cross-transaction intersection of candidate sets on test curves.
+    However, on production-scale curves such as secp256k1, typical window sizes exceed the tractability
+    threshold by approximately $10^{38}$ orders of magnitude, rendering the na&iuml;ve intersection
+    method strictly inferior to generic discrete-logarithm attacks. The active research direction
+    is the development of algebraic methods for exponential window reduction.
+    A rigorous probabilistic analysis quantifies the expected frequency of each class, demonstrating that
     non-structural anomalies are inherent to the full transaction space but unobservable on
     production-scale curves such as secp256k1, while structural anomaly D remains universally
     present and is the subject of active research into computational tractability at scale.
@@ -633,7 +637,69 @@ $$s_{zk} = a \cdot m_1, \qquad m_1 \in \{2, 3, 4, \ldots\} \tag{16}$$
   $$\prod_{i=1}^{T} w_i < (n - 1)^{T - 1} \tag{26}$$
 </div>
 
-<h3>8.2 &ensp; Intersection Algorithm</h3>
+<h3>8.2 &ensp; Computational Gap Analysis on secp256k1</h3>
+
+<p>
+  The uniqueness condition (26) imposes a hard constraint on the window sizes $w_i$.
+  For $T$ transactions with uniform window size $W$, uniqueness requires
+  $W^T < (n-1)^{T-1}$, equivalently:
+</p>
+
+$$W < (n - 1)^{(T-1)/T} \tag{27}$$
+
+<p>
+  For secp256k1 ($n \approx 1.158 \times 10^{77}$) with $T = 2$ transactions, this yields
+  $W < \sqrt{n} \approx 10^{38.5}$.
+</p>
+
+<p>
+  However, the window size $W = |\mathcal{R}(a, N)| \approx a + 1$ is determined by the anomaly
+  residue $a = s \bmod d$, where $d = (s_{zr} - s) \bmod n$. Since $s$ and $d$ are pseudorandom
+  elements of $\mathbb{Z}_n$, the residue $a$ is distributed over $[1, d-1]$ with typical values
+  of order $O(d)$. For uniformly distributed $d$, the expected value of $a$ is:
+</p>
+
+$$\mathbb{E}[a] \;\approx\; \frac{n}{4} \;\approx\; 2.9 \times 10^{76}
+\tag{28}$$
+
+<div class="proposition">
+  <span class="label">Proposition 2 (Fundamental computational barrier).</span>
+  On secp256k1, the typical window size $W \approx n/4 \approx 2.9 \times 10^{76}$ exceeds the
+  uniqueness threshold $\sqrt{n} \approx 10^{38.5}$ by approximately <strong>38 orders of magnitude</strong>.
+  Consequently:
+  <br><br>
+  <em>(i)</em> &ensp; Even the additive intersection cost $O\!\left(\sum w_i\right)$ with typical window sizes
+  is $O(n)$ per transaction&mdash;equivalent to exhaustive search over the full key space.
+  <br><br>
+  <em>(ii)</em> &ensp; The best known generic attack on the elliptic curve discrete logarithm problem (Pollard's
+  rho / Baby-step Giant-step) requires $O(\sqrt{n}) \approx 10^{38.5}$ group operations. The na&iuml;ve
+  anomaly-D intersection with typical window sizes requires $O(n) \approx 10^{77}$ modular operations,
+  which is <strong>$\sim\!10^{38}$ times worse</strong> than the standard ECDLP attack that is itself already
+  considered computationally infeasible.
+  <br><br>
+  <em>(iii)</em> &ensp; The probability of encountering a transaction with $a < \sqrt{n}$ (which would bring
+  the window below the uniqueness threshold for $T = 2$) is approximately $\sqrt{n}/n = 1/\sqrt{n}
+  \approx 10^{-38.5}$. Observing even one such transaction from a given key requires on the order
+  of $10^{38.5}$ same-key transactions, which is physically unrealizable.
+</div>
+
+<div class="remark">
+  <span class="label">Remark 6 (Honest assessment of current state).</span>
+  The intersection framework as described above is <em>mathematically correct</em> and
+  <em>experimentally validated</em> on test curves where $n$ is small enough that $a + 1 \ll n$.
+  On test_small ($n \approx 10^5$), typical $a \approx 10^4$ and $\sqrt{n} \approx 316$;
+  since $a > \sqrt{n}$, even on test curves the method does not satisfy the uniqueness condition
+  for $T = 2$ with generic transactions&mdash;it succeeds because the test demonstrates
+  correct mechanics with <em>known</em> levels, not because the window is inherently narrow.
+  <br><br>
+  On secp256k1, the current intersection method without window reduction is not a viable
+  attack vector. It is strictly inferior to generic ECDLP algorithms by a factor of $\sqrt{n}$.
+  The research direction is therefore not the intersection algorithm itself, but the
+  development of <strong>algebraic methods to exponentially narrow the $s_{zk}$ candidate window</strong>
+  below the $O(a)$ bound&mdash;a problem that remains open.
+</div>
+
+<h3>8.3 &ensp; Intersection Algorithm</h3>
 
 <div class="algorithm">
   <div class="alg-title">Algorithm 1: Cross-Transaction Intersection for Anomaly D</div>
@@ -649,7 +715,7 @@ $$s_{zk} = a \cdot m_1, \qquad m_1 \in \{2, 3, 4, \ldots\} \tag{16}$$
 </div>
 
 <div class="remark">
-  <span class="label">Remark 6 (Complexity).</span>
+  <span class="label">Remark 7 (Complexity).</span>
   Total cost is $O\!\left(\sum_{j=1}^T w_j \cdot \log^2 n\right)$&mdash;additive rather than the multiplicative $\prod w_i$ of the na&iuml;ve Cartesian product.
 </div>
 
@@ -661,7 +727,7 @@ $$s_{zk} = a \cdot m_1, \qquad m_1 \in \{2, 3, 4, \ldots\} \tag{16}$$
 <div class="theorem">
   <span class="label">Theorem 7 (Marginal level distribution).</span>
   The probability that an anomaly-D transaction has level $N$ follows an approximate hyperbolic law:
-  $$\Pr[N] \propto \frac{1}{N + c} \tag{27}$$
+  $$\Pr[N] \propto \frac{1}{N + c} \tag{29}$$
   for a constant $c > 0$. As $N$ increases, fewer transactions have sufficiently small $a$ to reach that level (since $aN < n$ is required), producing the observed decay.
 </div>
 
@@ -684,7 +750,7 @@ $$s_{zk} = a \cdot m_1, \qquad m_1 \in \{2, 3, 4, \ldots\} \tag{16}$$
 <p class="table-caption">Table 2. Selected level counts for anomaly-D transactions ($10^6$-transaction samples).</p>
 
 <div class="remark">
-  <span class="label">Remark 7 (Scale invariance).</span>
+  <span class="label">Remark 8 (Scale invariance).</span>
   The distributions are remarkably consistent across curves differing by four orders of magnitude in $n$.
   Levels D0&ndash;D3 are approximately equiprobable ($\approx 17{,}000$ each), with smooth hyperbolic
   decay thereafter. This confirms that the level structure is a <em>scale-invariant</em> property of
@@ -703,27 +769,28 @@ $$s_{zk} = a \cdot m_1, \qquad m_1 \in \{2, 3, 4, \ldots\} \tag{16}$$
 <h3>10.1 &ensp; Transaction Space</h3>
 
 <p>
-  The total number of distinct transactions is $|\mathcal{T}| = (n - 1)^5$.
+  The total number of distinct valid transactions is $|\mathcal{T}| = (n - 1)^4$, corresponding
+  to the four free parameters $(z, x, k, r)$ with $s$ determined by the signing equation (1).
 </p>
 
 <h3>10.2 &ensp; Non-Structural Anomalies</h3>
 
 <p><strong>Anomaly A:</strong> requires $s_{zk} = a$ (one specific value out of $n-1$):</p>
-$$\Pr[\text{A}] \approx \frac{1}{4(n-1)}, \qquad \mathbb{E}[\#A] = \frac{N_{\text{tx}}}{4(n-1)} \tag{28}$$
+$$\Pr[\text{A}] \approx \frac{1}{4(n-1)}, \qquad \mathbb{E}[\#A] = \frac{N_{\text{tx}}}{4(n-1)} \tag{30}$$
 
 <p><strong>Anomaly B:</strong> requires dual divisibility with coinciding quotients:</p>
-$$\Pr[\text{B}] \sim O(n^{-2}), \qquad \mathbb{E}[\#B] \approx \frac{N_{\text{tx}}}{4n^2} \tag{29}$$
+$$\Pr[\text{B}] \sim O(n^{-2}), \qquad \mathbb{E}[\#B] \approx \frac{N_{\text{tx}}}{4n^2} \tag{31}$$
 
 <p><strong>Anomaly C:</strong> requires $a \mid s_{zk}$ with $m_1 \geq 2$; averaging over the heavy-tailed distribution of $a$:</p>
-$$\mathbb{E}[\#C] \approx \frac{N_{\text{tx}}}{4} \cdot \frac{c \cdot \ln n}{n} \tag{30}$$
+$$\mathbb{E}[\#C] \approx \frac{N_{\text{tx}}}{4} \cdot \frac{c \cdot \ln n}{n} \tag{32}$$
 <p>where $c > 1$ is a bias correction factor.</p>
 
 <p><strong>Anomaly E:</strong> fixes $s_{zk}$ to at most 2 values; exactly one of $s, s+n$ is even for prime $n > 2$:</p>
-$$\Pr[\text{E}] = \frac{1}{n-1}, \qquad \mathbb{E}[\#E] = \frac{N_{\text{tx}}}{n-1} \tag{31}$$
+$$\Pr[\text{E}] = \frac{1}{n-1}, \qquad \mathbb{E}[\#E] = \frac{N_{\text{tx}}}{n-1} \tag{33}$$
 
 <h3>10.3 &ensp; Structural Anomaly D</h3>
 
-$$\Pr[\text{D}] \approx \Pr[\text{qualified}] \cdot \Pr[a \nmid s_{zk}] \approx \frac{1}{4}\left(1 - O\!\left(\frac{\ln n}{n}\right)\right) \approx \frac{1}{4} \tag{32}$$
+$$\Pr[\text{D}] \approx \Pr[\text{qualified}] \cdot \Pr[a \nmid s_{zk}] \approx \frac{1}{4}\left(1 - O\!\left(\frac{\ln n}{n}\right)\right) \approx \frac{1}{4} \tag{34}$$
 
 <p>This fraction is independent of $n$.</p>
 
@@ -758,7 +825,7 @@ $$\Pr[\text{D}] \approx \Pr[\text{qualified}] \cdot \Pr[a \nmid s_{zk}] \approx 
 <p class="table-caption">Table 4. Observed anomaly counts across test curves.</p>
 
 <div class="remark">
-  <span class="label">Remark 8.</span>
+  <span class="label">Remark 9.</span>
   On test_small: $\mathbb{E}[\#A] \approx 2.5$ (observed $4$), $\mathbb{E}[\#E] \approx 10$ (observed $12$)&mdash;within Poisson fluctuation.
   Anomaly C observed count ($580$) exceeds the na&iuml;ve estimate by $\sim 10\times$, explained by the heavy-tailed distribution of the residue $a$.
   On test_large ($n \approx 10^9$), no non-structural anomalies are observed ($\mathbb{E}[\#A] \approx 2 \times 10^{-4}$).
@@ -780,18 +847,18 @@ $$\Pr[\text{D}] \approx \Pr[\text{qualified}] \cdot \Pr[a \nmid s_{zk}] \approx 
 <p class="table-caption">Table 5. Expected anomaly counts for secp256k1.</p>
 
 <p>To observe a single non-structural anomaly with probability $> 1/2$:</p>
-$$N_{\min} \approx \frac{n \ln 2}{4} \approx 2.0 \times 10^{76} \text{ transactions} \tag{33}$$
+$$N_{\min} \approx \frac{n \ln 2}{4} \approx 2.0 \times 10^{76} \text{ transactions} \tag{35}$$
 <p>This exceeds any physically realizable computation.</p>
 
 <h3>11.3 &ensp; Structural Existence</h3>
 
 <div class="proposition">
   <span class="label">Proposition 1.</span>
-  For any elliptic curve with prime order $n \geq 5$, the full space $\mathcal{T} = \{1,\ldots,n-1\}^5$ contains:
-  $$|\mathcal{A}_{\text{A}}| \sim \frac{(n-1)^4}{4}, \quad
-  |\mathcal{A}_{\text{C}}| \sim \frac{c(n-1)^4 \ln n}{4}, \quad
-  |\mathcal{A}_{\text{E}}| \sim (n-1)^4 \tag{34}$$
-  These are astronomically large in absolute terms ($\sim 10^{307}$ for secp256k1), yet constitute a vanishing $O(n^{-1})$ fraction of $|\mathcal{T}| \sim 10^{385}$.
+  For any elliptic curve with prime order $n \geq 5$, the full space $\mathcal{T} = \{1,\ldots,n-1\}^4$ contains:
+  $$|\mathcal{A}_{\text{A}}| \sim \frac{(n-1)^3}{4}, \quad
+  |\mathcal{A}_{\text{C}}| \sim \frac{c(n-1)^3 \ln n}{4}, \quad
+  |\mathcal{A}_{\text{E}}| \sim (n-1)^3 \tag{36}$$
+  These are astronomically large in absolute terms ($\sim 10^{231}$ for secp256k1), yet constitute a vanishing $O(n^{-1})$ fraction of $|\mathcal{T}| \sim 10^{308}$.
 </div>
 
 <h3>11.4 &ensp; Intersection Example</h3>
@@ -826,6 +893,8 @@ $$N_{\min} \approx \frac{n \ln 2}{4} \approx 2.0 \times 10^{76} \text{ transacti
   <tr><td style="text-align:left">Single-tx recovery</td><td>Deterministic (A,B,E)</td><td>Requires enumeration over $\mathcal{R}$</td></tr>
   <tr><td style="text-align:left">Multi-tx needed</td><td>No (A,B,E)</td><td>Essential</td></tr>
   <tr><td style="text-align:left">Observability (secp256k1)</td><td>$\approx 0$</td><td>$\approx 25\%$ of all tx</td></tr>
+  <tr><td style="text-align:left">Na&iuml;ve cost on secp256k1</td><td>N/A (unobservable)</td><td>$O(n) \approx 10^{77}$ ops (typical $a$)</td></tr>
+  <tr><td style="text-align:left">vs. generic ECDLP attack</td><td>N/A</td><td>$\sim\!10^{38}\times$ worse than BSGS ($O(\sqrt{n})$)</td></tr>
 </table>
 <p class="table-caption">Table 7. Comparative summary of all anomaly classes.</p>
 
@@ -835,22 +904,39 @@ $$N_{\min} \approx \frac{n \ln 2}{4} \approx 2.0 \times 10^{76} \text{ transacti
   Anomalies A, B, and E provide instant deterministic key recovery but occur with
   vanishing probability on production curves&mdash;mathematically elegant but cryptographically
   irrelevant for secp256k1. Their security significance lies not in their absence (they exist
-  in $\sim 10^{307}$ instances), but in the impossibility of encountering them in any feasible sample.
+  in $\sim 10^{231}$ instances), but in the impossibility of encountering them in any feasible sample.
 </p>
 
 <p>
-  Anomaly D affects one in four transactions on <em>any</em> curve, provides a bounded candidate
-  search space narrowable via cross-transaction intersection, and its level structure follows
-  scale-invariant laws. The intersection algorithm reduces search from multiplicative to additive
-  complexity. Whether this is computationally tractable on secp256k1 is the central open question.
+  Anomaly D is structurally distinct: it affects one in four transactions on <em>any</em> curve
+  and provides a bounded candidate search space characterized by the factor-level decomposition.
+  The intersection algorithm reduces the combinatorial explosion from a multiplicative Cartesian
+  product to additive complexity, which enables efficient recovery on test curves. However, this
+  efficiency gain does not overcome the fundamental barrier on secp256k1: with typical window sizes
+  $W \approx n/4$, even the additive cost is $O(n)$&mdash;approximately $10^{38}$ times worse
+  than the best generic ECDLP attacks (which are themselves considered infeasible).
+</p>
+
+<p>
+  The research program is therefore not directed at applying the current intersection method
+  to secp256k1 (which would be futile), but at developing <strong>algebraic methods for exponential
+  window reduction</strong>&mdash;techniques that would narrow the $s_{zk}$ candidate range from $O(a)$
+  to a computationally tractable size without relying on the statistical rarity of small $a$.
+  Whether such methods exist is the central open question.
 </p>
 
 <h3>12.3 &ensp; Open Problems</h3>
 
 <div class="remark">
-  <span class="label">Open Problem 1 (Feasibility on secp256k1).</span>
-  Determining the distribution of $\min_i(a_i)$ for real Bitcoin addresses with $T \geq 2$ transactions.
-  Uniqueness requires $W^T < n^{T-1}$; for $T = 2$: $W < \sqrt{n} \approx 10^{38.5}$.
+  <span class="label">Open Problem 1 (Exponential window reduction).</span>
+  The central barrier to anomaly-D exploitation on secp256k1 is the window size:
+  typical $a \approx n/4 \approx 10^{76}$, while tractability requires $W \ll \sqrt{n} \approx 10^{38.5}$.
+  The gap is $\sim\!10^{38}$ orders of magnitude. Bridging this gap requires discovering algebraic
+  structure in the relationship between $a$, $s_{zk}$, and $s$ that enables exponential reduction
+  of the candidate range&mdash;i.e., narrowing $\mathcal{R}(a, N)$ from $O(a)$ candidates to
+  $O(\text{poly}(\log n))$ without knowledge of the true level $N$. No such method is currently known.
+  Without it, anomaly-D intersection is strictly inferior to generic ECDLP algorithms on secp256k1
+  by a factor of $\sqrt{n} \approx 10^{38.5}$.
 </div>
 
 <div class="remark">
@@ -879,7 +965,10 @@ $$N_{\min} \approx \frac{n \ln 2}{4} \approx 2.0 \times 10^{76} \text{ transacti
     <strong>Status.</strong> &ensp;
     Anomalies A, B, E: verified closed-form recovery.
     Anomaly C: no known analytical recovery.
-    Anomaly D: under active research; intersection validated on test curves ($n \approx 10^5$, $10^9$), extending to secp256k1 ($n \approx 10^{77}$).
+    Anomaly D: under active research. Intersection framework validated on test curves
+    ($n \approx 10^5$, $10^9$). On secp256k1 ($n \approx 10^{77}$), typical window sizes
+    exceed tractability thresholds by $\sim\!10^{38}$ orders of magnitude; algebraic methods
+    for exponential window reduction are being investigated.
   </p>
 </div>
 
