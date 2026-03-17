@@ -29,6 +29,16 @@ class CurveParams:
     g: Tuple[int, int]
     n: int
 
+TEST_PARAMS_TINY = CurveParams(
+    name="secp256k1",
+    mode="test",
+    p=10007,
+    a=48,
+    b=22,
+    g=(4, 1668),
+    n=9967
+)
+
 TEST_PARAMS_SMALL = CurveParams(
     name="secp256k1",
     mode="test",
@@ -426,6 +436,9 @@ def print_curve_run(curve: CurveParams, private_key: Optional[int] = None) -> No
 
 def main() -> None:
     """Run demo for both test and legacy curves."""
+
+    print("========== TEST CURVE (TINY) ==========")
+    print_curve_run(TEST_PARAMS_TINY)
 
     print("========== TEST CURVE (SMALL) ==========")
     print_curve_run(TEST_PARAMS_SMALL)

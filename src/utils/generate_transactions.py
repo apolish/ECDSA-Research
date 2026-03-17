@@ -22,6 +22,7 @@ try:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from ecurve.secp256k1 import (
         Secp256k1,
+        TEST_PARAMS_TINY,
         TEST_PARAMS_SMALL,
         TEST_PARAMS_LARGE,
         LEGACY_PARAMS,
@@ -99,10 +100,7 @@ def _print_once_demo(ec: Secp256k1) -> None:
 def _format_row(row: Sequence[object], widths: Sequence[int]) -> str:
     cells = []
     for val, w in zip(row, widths):
-        if isinstance(val, Fraction):
-            cells.append(f"{str(val):<{w}}")
-        else:
-            cells.append(f"{val:<{w}}")
+        cells.append(f"{str(val):<{w}}")
     return "".join(cells)
 
 
@@ -419,21 +417,23 @@ def _collect_rows(
 
 
 def _select_curve(mode: str) -> CurveParams:
+    if mode == "test_tiny":
+        return TEST_PARAMS_TINY
     if mode == "test_small":
         return TEST_PARAMS_SMALL
     if mode == "test_large":
         return TEST_PARAMS_LARGE
     if mode == "legacy":
         return LEGACY_PARAMS
-    raise ValueError("Mode must be 'test_small' or 'test_large' or 'legacy'!")
+    raise ValueError("Mode must be 'test_tiny' or 'test_small' or 'test_large' or 'legacy'!")
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="secp256k1 transaction data generator")
-    p.add_argument("--mode", choices=["test_small", "test_large", "legacy"], default="test_small", help="Curve mode: test_small, test_large or legacy.")
+    p.add_argument("--mode", choices=["test_tiny", "test_small", "test_large", "legacy"], default="test_small", help="Curve mode: test_tiny, test_small, test_large or legacy.")
     p.add_argument("--private_key", type=int, default=0, help="Private key to use (if '0' then random else specific key)")
-    p.add_argument("--keys", type=int, default=10000, help="Total unique keys to generate")
-    p.add_argument("--tx_per_key", type=int, default=100, help="Transactions per key")
+    p.add_argument("--keys", type=int, default=9966, help="Total unique keys to generate")
+    p.add_argument("--tx_per_key", type=int, default=10, help="Transactions per key")
     p.add_argument("--output_count", type=int, default=1000, help="Number of output transactions to generate")
     p.add_argument("--d_case_digit", type=int, default=-1, help="Digit for filtering case D (if -1 then all)")
     p.add_argument("--min_start_range", type=int, default=1, help="Minimum start range for private key and k-nonce generation")
@@ -446,6 +446,9 @@ def main() -> None:
     curve = _select_curve(args.mode)
     ec = Secp256k1(curve)
     cfg = _build_report_config(curve)
+
+    if args.keys > ec.curve.n - 1:
+        raise ValueError("Requested more unique keys than possible for this curve!")
 
     if args.demo:
         _print_once_demo(ec)
