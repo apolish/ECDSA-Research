@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import time
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -23,6 +25,7 @@ from secp256k1 import (
         LEGACY_PARAMS,
         CurveParams,
         make_bitcoin_legacy_sighash_message,
+        make_bitcoin_segwit_sighash_message,
     )
 
 @dataclass(frozen=True)
@@ -49,7 +52,7 @@ def _build_report_config(curve: CurveParams) -> ReportConfig:
     return ReportConfig(precision=precision, column_widths=column_widths, line_length=line_length)
 
 
-def _print_once_demo(ec: Secp256k1) -> None:
+def _print_once_demo(ec: Secp256k1, sig_type: str = "p2pkh") -> None:
     import time
     pk: int
     pub: Tuple[int, int]
@@ -69,8 +72,17 @@ def _print_once_demo(ec: Secp256k1) -> None:
 
     t0 = time.time()
     if ec.curve.mode == "legacy":
-        message = make_bitcoin_legacy_sighash_message(pub)
+        prev_txid = os.urandom(32)
+        if sig_type == "p2wpkh":
+            # SegWit v0 (P2WPKH) — BIP 143 SIGHASH_ALL preimage
+            message = make_bitcoin_segwit_sighash_message(pub, prev_txid)
+            print("Using BIP 143 SegWit v0 preimage for signing.")
+        else:
+            # Legacy P2PKH — traditional SIGHASH_ALL preimage
+            message = make_bitcoin_legacy_sighash_message(pub, prev_txid)
+            print("Using legacy P2PKH preimage for signing.")
     else:
+        # For test curves we keep an arbitrary message; z is randomized in hash_message
         message = b"Hello, secp256k1!"
     sig = ec.sign_message(pk, message)
     z, r, s, k_inv = sig
@@ -98,6 +110,7 @@ def _write_report(
     cfg: ReportConfig,
     rows: List[Sequence[object]],
     stats: dict,
+    sig_type: str = "p2pkh",
 ) -> str:
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     fname = f"transaction_list_{timestamp}.txt"
@@ -113,6 +126,12 @@ def _write_report(
         f.write(f"b = {curve.b}\n")
         f.write(f"g = {curve.g}\n")
         f.write(f"n = {curve.n}\n\n")
+        if sig_type == "p2wpkh":
+            # SegWit v0 (P2WPKH) — BIP 143 SIGHASH_ALL preimage
+            f.write("Using BIP 143 SegWit v0 preimage for signing.\n\n")
+        else:
+            # Legacy P2PKH — traditional SIGHASH_ALL preimage
+            f.write("Using legacy P2PKH preimage for signing.\n\n")
 
         # Rows table
         if rows:
@@ -263,6 +282,7 @@ def _collect_rows(
     output_count: int,
     d_case_digit: int,
     min_start_range: int,
+    sig_type: str = "p2pkh",
 ) -> Tuple[List[Sequence[object]], dict]:
 
     curve = ec.curve
@@ -296,7 +316,29 @@ def _collect_rows(
         for _ in range(transaction_limit_per_key):
             # message generation
             if curve.mode == "legacy":
-                msg = make_bitcoin_legacy_sighash_message(public_key)
+                # Each transaction spends a different UTXO.
+                # In real Bitcoin prev_txid = dSHA256(serialized_prev_tx),
+                # which is effectively a unique 256-bit identifier per UTXO.
+                prev_txid = os.urandom(32)
+                prev_index = random.randint(0, 3)
+                input_value_sats = random.randint(10_000, 100_0000_0000)
+                fee_sats = random.randint(1_000, 50_000)
+                output_value_sats = input_value_sats - fee_sats
+
+                if sig_type == "p2wpkh":
+                    # SegWit v0 (P2WPKH) — BIP 143 SIGHASH_ALL preimage
+                    # BIP 143 commits to input value (anti-fee-manipulation)
+                    msg = make_bitcoin_segwit_sighash_message(
+                        public_key, prev_txid, prev_index,
+                        input_value_sats, output_value_sats,
+                    )
+                else:
+                    # Legacy P2PKH — traditional SIGHASH_ALL preimage
+                    # Legacy sighash does NOT commit to input value
+                    msg = make_bitcoin_legacy_sighash_message(
+                        public_key, prev_txid, prev_index,
+                        output_value_sats,
+                    )
             else:
                 rnd = random.randrange(1, curve.n - 1)
                 msg = str(rnd).encode()
@@ -427,6 +469,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--d_case_digit", type=int, default=-1, help="Digit for filtering case D (if -1 then all)")
     p.add_argument("--min_start_range", type=int, default=1, help="Minimum start range for private key and k-nonce generation")
     p.add_argument("--demo", action="store_true", help="Run demo of key generation, signing, and verification")
+    p.add_argument("--sig_type", choices=["p2pkh", "p2wpkh"], default="p2pkh", help="Signature type: p2pkh (legacy) or p2wpkh (segwit)")
     return p.parse_args(argv)
 
 
@@ -451,8 +494,9 @@ def main() -> None:
         output_count=args.output_count,
         d_case_digit=args.d_case_digit,
         min_start_range=args.min_start_range,
+        sig_type=args.sig_type,
     )
-    path = _write_report(curve, cfg, rows, stats)
+    path = _write_report(curve, cfg, rows, stats, args.sig_type)
     print(f"Wrote report: {path}")
 
 
