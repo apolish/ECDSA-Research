@@ -172,6 +172,97 @@ def make_bitcoin_legacy_sighash_message(public_key: Tuple[int, int]) -> bytes:
 
     return preimage
 
+def make_bitcoin_segwit_sighash_message(public_key: Tuple[int, int]) -> bytes:
+    """
+    Build a Bitcoin SegWit v0 (BIP 143) SIGHASH_ALL preimage for a simple
+    1-in-1-out P2WPKH transaction.
+ 
+    BIP 143 defines a fundamentally different serialization than legacy:
+      1.  nVersion              (4 bytes LE)
+      2.  hashPrevouts          (32 bytes) - dSHA256 of all input outpoints
+      3.  hashSequence          (32 bytes) - dSHA256 of all input sequences
+      4.  outpoint              (36 bytes) - txid + vout of the input being signed
+      5.  scriptCode            (variable) - for P2WPKH: OP_DUP OP_HASH160 <20> <hash> OP_EQUALVERIFY OP_CHECKSIG
+      6.  value                 (8 bytes LE) - satoshi value of the UTXO being spent
+      7.  nSequence             (4 bytes LE) - sequence of the input being signed
+      8.  hashOutputs           (32 bytes) - dSHA256 of all serialized outputs
+      9.  nLockTime             (4 bytes LE)
+      10. nHashType             (4 bytes LE)
+ 
+    Reference: https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki
+    """
+    # --- Transaction metadata ---
+    n_version = (2).to_bytes(4, "little")  # version 2 (common for SegWit tx)
+    n_locktime = (0).to_bytes(4, "little")
+    n_hashtype = (1).to_bytes(4, "little")  # SIGHASH_ALL
+ 
+    # --- Single input: dummy outpoint ---
+    prev_txid = b"\x00" * 32  # dummy prev txid (LE)
+    prev_vout = (0).to_bytes(4, "little")
+    outpoint = prev_txid + prev_vout
+ 
+    sequence = (0xFFFFFFFF).to_bytes(4, "little")
+ 
+    # hashPrevouts = dSHA256(outpoint)  (only one input)
+    hash_prevouts = hashlib.sha256(hashlib.sha256(outpoint).digest()).digest()
+ 
+    # hashSequence = dSHA256(sequence)  (only one input)
+    hash_sequence = hashlib.sha256(hashlib.sha256(sequence).digest()).digest()
+ 
+    # --- scriptCode for P2WPKH ---
+    # For P2WPKH the scriptCode is the legacy P2PKH equivalent:
+    #   OP_DUP OP_HASH160 PUSH20 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG
+    # Prefixed with its length byte (0x19 = 25 bytes).
+    compressed_pub = compress_public_key(public_key)
+    pubkey_hash = hash160(compressed_pub)
+    script_code = (
+        b"\x19"          # length: 25 bytes
+        b"\x76"          # OP_DUP
+        b"\xa9"          # OP_HASH160
+        b"\x14"          # PUSH 20
+        + pubkey_hash +
+        b"\x88"          # OP_EQUALVERIFY
+        b"\xac"          # OP_CHECKSIG
+    )
+ 
+    # --- Value of the UTXO being spent (BIP 143 critical field!) ---
+    # Legacy sighash does NOT commit to value; BIP 143 does.
+    # This prevents fee-manipulation attacks on hardware wallets.
+    value_sats = 50_0000_0000  # 50 BTC (illustrative)
+    value = value_sats.to_bytes(8, "little")
+ 
+    # --- Single output: pay to same pubkey hash ---
+    out_script_pubkey = (
+        b"\x76\xa9\x14"
+        + pubkey_hash
+        + b"\x88\xac"
+    )
+    out_value = (49_9999_0000).to_bytes(8, "little")  # 50 BTC minus fee
+    serialized_output = (
+        out_value
+        + encode_varint(len(out_script_pubkey))
+        + out_script_pubkey
+    )
+ 
+    # hashOutputs = dSHA256(serialized outputs)  (only one output)
+    hash_outputs = hashlib.sha256(hashlib.sha256(serialized_output).digest()).digest()
+ 
+    # --- BIP 143 preimage assembly ---
+    preimage = (
+        n_version
+        + hash_prevouts
+        + hash_sequence
+        + outpoint
+        + script_code
+        + value
+        + sequence
+        + hash_outputs
+        + n_locktime
+        + n_hashtype
+    )
+ 
+    return preimage
+
 def int_to_bytes(value: int, byteorder: str = 'big') -> bytes:
     """
     Convert an integer to bytes with the minimum required length.
@@ -385,7 +476,7 @@ class Secp256k1:
         return list(seen)
 
 
-def print_curve_run(curve: CurveParams, private_key: Optional[int] = None) -> None:
+def print_curve_run(curve: CurveParams, private_key: Optional[int] = None, sig_type: str = "p2pkh") -> None:
     """Run full demo sequence: key generation, signing, verification, analysis."""
     ec = Secp256k1(curve)
 
@@ -416,8 +507,14 @@ def print_curve_run(curve: CurveParams, private_key: Optional[int] = None) -> No
 
     t0 = time.time()
     if curve.mode == "legacy":
-        # For real secp256k1 use a Bitcoin legacy SIGHASH_ALL preimage (1-in-1-out P2PKH)
-        message = make_bitcoin_legacy_sighash_message(public_key)
+        if sig_type == "p2wpkh":
+            # SegWit v0 (P2WPKH) — BIP 143 SIGHASH_ALL preimage
+            message = make_bitcoin_segwit_sighash_message(public_key)
+            print("Using BIP 143 SegWit v0 preimage for signing.")
+        else:
+            # Legacy P2PKH — traditional SIGHASH_ALL preimage
+            message = make_bitcoin_legacy_sighash_message(public_key)
+            print("Using legacy P2PKH preimage for signing.")
     else:
         # For test curves we keep an arbitrary message; z is randomized in hash_message
         message = b"Hello, secp256k1!"
@@ -448,6 +545,9 @@ def main() -> None:
 
     print("============= LEGACY CURVE =============")
     print_curve_run(LEGACY_PARAMS)
+
+    print("============= LEGACY CURVE =============")
+    print_curve_run(LEGACY_PARAMS, sig_type="p2wpkh")
 
 
 if __name__ == "__main__":
