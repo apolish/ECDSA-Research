@@ -535,19 +535,19 @@ def main() -> None:
     """Run demo for both test and legacy curves."""
 
     print("========== TEST CURVE (TINY) ==========")
-    print_curve_run(TEST_PARAMS_TINY)
+    print_curve_run(curve=TEST_PARAMS_TINY)
 
     print("========== TEST CURVE (SMALL) ==========")
-    print_curve_run(TEST_PARAMS_SMALL)
+    print_curve_run(curve=TEST_PARAMS_SMALL)
 
     print("========== TEST CURVE (LARGE) ==========")
-    print_curve_run(TEST_PARAMS_LARGE)
+    print_curve_run(curve=TEST_PARAMS_LARGE)
 
     print("============= LEGACY CURVE =============")
-    print_curve_run(LEGACY_PARAMS)
+    print_curve_run(curve=LEGACY_PARAMS)
 
     print("============= LEGACY CURVE =============")
-    print_curve_run(LEGACY_PARAMS, sig_type="p2wpkh")
+    print_curve_run(curve=LEGACY_PARAMS, sig_type="p2wpkh")
 
 
 if __name__ == "__main__":

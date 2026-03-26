@@ -203,8 +203,10 @@ def make_bitcoin_segwit_sighash_message(public_key: Tuple[int, int]) -> bytes:
  
     sequence = (0xFFFFFFFF).to_bytes(4, "little")
  
+    # hashPrevouts = dSHA256(outpoint)  (only one input)
     hash_prevouts = hashlib.sha256(hashlib.sha256(outpoint).digest()).digest()
  
+    # hashSequence = dSHA256(sequence)  (only one input)
     hash_sequence = hashlib.sha256(hashlib.sha256(sequence).digest()).digest()
  
     # --- scriptCode for P2WPKH ---
@@ -242,6 +244,7 @@ def make_bitcoin_segwit_sighash_message(public_key: Tuple[int, int]) -> bytes:
         + out_script_pubkey
     )
  
+    # hashOutputs = dSHA256(serialized outputs)  (only one output)
     hash_outputs = hashlib.sha256(hashlib.sha256(serialized_output).digest()).digest()
  
     # --- BIP 143 preimage assembly ---
@@ -532,19 +535,19 @@ def main() -> None:
     """Run demo for both test and legacy curves."""
 
     print("========== TEST CURVE (TINY) ==========")
-    print_curve_run(TEST_PARAMS_TINY)
+    print_curve_run(curve=TEST_PARAMS_TINY)
 
     print("========== TEST CURVE (SMALL) ==========")
-    print_curve_run(TEST_PARAMS_SMALL)
+    print_curve_run(curve=TEST_PARAMS_SMALL)
 
     print("========== TEST CURVE (LARGE) ==========")
-    print_curve_run(TEST_PARAMS_LARGE)
+    print_curve_run(curve=TEST_PARAMS_LARGE)
 
     print("============= LEGACY CURVE =============")
-    print_curve_run(LEGACY_PARAMS)
+    print_curve_run(curve=LEGACY_PARAMS)
 
     print("============= LEGACY CURVE =============")
-    print_curve_run(LEGACY_PARAMS, sig_type="p2wpkh")
+    print_curve_run(curve=LEGACY_PARAMS, sig_type="p2wpkh")
 
 
 if __name__ == "__main__":
