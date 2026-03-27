@@ -7,7 +7,6 @@ import argparse
 import os
 import random
 import time
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -34,7 +33,7 @@ class ReportConfig:
     column_widths: Sequence[int]
     line_length: int
     headers: Sequence[str] = (
-        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k^{-1}", "a", "m1", "m2", "f", "x_recovered"
+        "case", "s", "s_zk", "s_rxk", "s_zr", "z", "r", "x", "k^{-1}", "a", "m1", "m2", "f", "x_recovered", "hypothesis"
     )
 
 
@@ -42,13 +41,13 @@ def _build_report_config(curve: CurveParams) -> ReportConfig:
     if curve.mode == "test":
         precision = 20
         getcontext().prec = precision
-        column_widths = [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, precision + 5, 12]
-        line_length = 145 + precision + 5 + 12
+        column_widths = [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, precision + 5, 28, 12]
+        line_length = 145 + precision + 5 + 28 + 12
     else:
         precision = 80
         getcontext().prec = precision
-        column_widths = [81, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, precision + 5, 80]
-        line_length = 961 + precision + 5 + 80
+        column_widths = [81, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, precision + 5, 80, 12]
+        line_length = 961 + precision + 5 + 80 + 12
     return ReportConfig(precision=precision, column_widths=column_widths, line_length=line_length)
 
 
@@ -272,6 +271,18 @@ def _recover_private_key(case: str, s: int, s_zr: int, z: int, r: int, a: int, c
     else:
         return "-"
 
+def _check_math_hypothesis_case_d(digit: str, s: int, s_zk: int, s_rxk: int, s_zr: int, z: int, r: int, private_key: int, k_inv: int, a: int) -> str:
+    """Check the mathematical hypothesis for case D."""
+    if digit > 0:
+        # Hypothesis: HYP-005
+        w = s_zk - digit * a
+        a_found = 3 * w - ((digit * a % w) - ((digit + 1) * a % w))
+        if a_found == a:
+            return "HYP-005"
+        # Hypothesis: HYP-006
+        #return "HYP-006"
+        #...
+    return "-"
 
 def _collect_rows(
     ec: Secp256k1,
@@ -356,7 +367,7 @@ def _collect_rows(
                 if case_E_count <= output_count:
                     x1, x2 = _recover_private_key(goldbach_case, s, 0, z, r, 0, curve.n)
                     rows.append(
-                        [f"{goldbach_case}", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-", f"{x1}, {x2}"]
+                        [f"{goldbach_case}", s, s_zk, s_rxk, "-", z, r, private_key, k_inv, "-", "-", "-", "-", f"{x1}, {x2}", "-"]
                     )
             # A, B, C, D cases
             s_zr = (z * r) % curve.n
@@ -374,13 +385,13 @@ def _collect_rows(
                             case_B_count += 1
                             if case_B_count <= output_count:
                                 rows.append(
-                                    ["B", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, m2, "-", _recover_private_key("B", s, s_zr, z, r, a, curve.n)]
+                                    ["B", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, m2, "-", _recover_private_key("B", s, s_zr, z, r, a, curve.n), "-"]
                                 )
                         else:
                             case_C_count += 1
                             if case_C_count <= output_count:
                                 rows.append(
-                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("C", s, s_zr, z, r, a, curve.n)]
+                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("C", s, s_zr, z, r, a, curve.n), "-"]
                                 )
                     # A, C cases
                     elif m1.denominator == 1 and m2.denominator != 1:
@@ -388,13 +399,13 @@ def _collect_rows(
                             case_A_count += 1
                             if case_A_count <= output_count:
                                 rows.append(
-                                    ["A", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("A", s, s_zr, z, r, a, curve.n)]
+                                    ["A", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("A", s, s_zr, z, r, a, curve.n), "-"]
                                 )
                         elif m1 > 1:
                             case_C_count += 1
                             if case_C_count <= output_count:
                                 rows.append(
-                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("C", s, s_zr, z, r, a, curve.n)]
+                                    ["C", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, m1, "-", "-", _recover_private_key("C", s, s_zr, z, r, a, curve.n), "-"]
                                 )
                     else:
                         # D case
@@ -409,13 +420,9 @@ def _collect_rows(
                                 continue
                             case_D_counts[digit] = case_D_counts.get(digit, 0) + 1
                             if case_D_count <= output_count:
-                                if d_case_digit == -1:
+                                if d_case_digit == -1 or digit == d_case_digit:
                                     rows.append(
-                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n)]
-                                    )
-                                elif digit == d_case_digit:
-                                    rows.append(
-                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n)]
+                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n), _check_math_hypothesis_case_d(digit, s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a)]
                                     )
 
         if i % progress_step == 0:
