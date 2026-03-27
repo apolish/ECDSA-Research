@@ -168,6 +168,7 @@ def _write_report(
             "case_C_count",
             "case_D_count",
             "case_E_count",
+            "hypothesis_005_count",
         ]
 
         # Reliable collection and sorting case_D<number>_count
@@ -286,8 +287,11 @@ def _check_math_hypothesis_case_d(digit: str, s: int, s_zk: int, s_rxk: int, s_z
     """Check the mathematical hypothesis for case D."""
     if digit > 0:
         # Hypothesis: HYP-005
+        #N = digit
         w = s_zk - digit * a
-        a_found = 3 * w - ((digit * a % w) - ((digit + 1) * a % w))
+        #a_found = N * w - ((N * a % w) - ((N + 1) * a % w)) # Gives ~3% matches for ECDSA transactions based on secp256k1 curve parameters but requires dynamic N parameter.
+        #a_found = 2 * w - ((N * a % w) - ((N + 1) * a % w)) # Gives ~11% matches for ECDSA transactions based on secp256k1 curve parameters but requires dynamic N parameter.
+        a_found = 2 * w - ((2 * a % w) - (3 * a % w))        # Gives ~11% matches for ECDSA transactions based on secp256k1 curve parameters but all parameters are static.
         if a_found == a:
             return "HYP-005"
         # Hypothesis: HYP-006
@@ -326,6 +330,7 @@ def _collect_rows(
     case_D_count = 0
     case_D_counts: dict[int, int] = {}
     case_E_count = 0
+    hypothesis_005_count = 0
 
     # progress
     progress_step = max(1, total_key_count // 10)
@@ -432,8 +437,11 @@ def _collect_rows(
                             case_D_counts[digit] = case_D_counts.get(digit, 0) + 1
                             if case_D_count <= output_count:
                                 if d_case_digit == -1 or digit == d_case_digit:
+                                    hypothesis_status = _check_math_hypothesis_case_d(digit, s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a)
+                                    if hypothesis_status == "HYP-005":
+                                        hypothesis_005_count += 1
                                     rows.append(
-                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n), _check_math_hypothesis_case_d(digit, s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a)]
+                                        [f"D{digit}", s, s_zk, s_rxk, s_zr, z, r, private_key, k_inv, a, "-", "-", f_str, _recover_private_key("D", s, s_zr, z, r, a, curve.n), hypothesis_status]
                                     )
 
         if i % progress_step == 0:
@@ -459,6 +467,7 @@ def _collect_rows(
         "case_D_count": case_D_count,
         **dynamic_stats,
         "case_E_count": case_E_count,
+        "hypothesis_005_count": hypothesis_005_count,
         "spent_time_sec": elapsed,
     }
 
