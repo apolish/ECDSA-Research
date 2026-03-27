@@ -285,18 +285,16 @@ def _recover_private_key(case: str, s: int, s_zr: int, z: int, r: int, a: int, c
 
 def _check_math_hypothesis_case_d(digit: str, s: int, s_zk: int, s_rxk: int, s_zr: int, z: int, r: int, private_key: int, k_inv: int, a: int) -> str:
     """Check the mathematical hypothesis for case D."""
-    if digit > 0:
-        # Hypothesis: HYP-005
-        #N = digit
+    # Hypothesis: HYP-005
+    if digit > 1 and s > s_zk and s_zk % 2 == 0:
+        N = digit
         w = s_zk - digit * a
-        #a_found = N * w - ((N * a % w) - ((N + 1) * a % w)) # Gives ~3% matches for ECDSA transactions based on secp256k1 curve parameters but requires dynamic N parameter.
-        #a_found = 2 * w - ((N * a % w) - ((N + 1) * a % w)) # Gives ~11% matches for ECDSA transactions based on secp256k1 curve parameters but requires dynamic N parameter.
-        a_found = 2 * w - ((2 * a % w) - (3 * a % w))        # Gives ~11% matches for ECDSA transactions based on secp256k1 curve parameters but all parameters are static.
+        a_found = N * w - ((N * a % w) - ((N + 1) * a % w))
         if a_found == a:
             return "HYP-005"
-        # Hypothesis: HYP-006
-        #return "HYP-006"
-        #...
+    # Hypothesis: HYP-006
+    #return "HYP-006"
+    #...
     return "-"
 
 def _collect_rows(
