@@ -10,8 +10,8 @@ The signing equation `s = (z + r·x)·k⁻¹ mod n` is split additively into a h
 hash/nonce part and a hidden key part:
 
 ```text
-s_zk  = z·k⁻¹       mod n      (hidden)
-s_rxk = r·x·k⁻¹     mod n      (hidden)
+s_zk  = z·k⁻¹        mod n      (hidden)
+s_rxk = r·x·k⁻¹      mod n      (hidden)
 s     = s_zk + s_rxk mod n
 ```
 
