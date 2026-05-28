@@ -168,4 +168,4 @@ https://doi.org/10.21203/rs.3.rs-6790872/v1
 
 Released under the MIT License (see `LICENSE`).
 
-### STATUS: Documented — not a vulnerability. No publication planned for class E
+### STATUS: Not active
