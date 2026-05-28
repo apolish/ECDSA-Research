@@ -138,7 +138,7 @@ ECDSA-Research/
 │   ├── ECDSA_Anomalies_Math_Framework.html  # Full mathematical framework
 │   └── ECDSA_Anomalies_Math_Framework.pdf   # Same, PDF
 └── knowledge/
-    └── ecdsa_research_knowledge.json        # Machine-readable research context
+    └── ecdsa_research_knowledge_base.json   # Machine-readable research context
 ```
 
 ## 🚀 Quick Start
@@ -168,4 +168,4 @@ https://doi.org/10.21203/rs.3.rs-6790872/v1
 
 Released under the MIT License (see `LICENSE`).
 
-### STATUS: Documented — not a vulnerability. No publication planned for class E.
+### STATUS: Documented — not a vulnerability. No publication planned for class E
