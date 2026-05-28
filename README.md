@@ -133,10 +133,7 @@ ECDSA-Research/
 │   ├── transaction_list_20260221205853.txt  # test small  (~1M tx; A,B,C,D,E)
 │   ├── transaction_list_20260221212522.txt  # test large  (~1M tx; A,B,C,D,E)
 │   ├── transaction_list_20260221211749.txt  # legacy      (~10K tx; A,B,C,D,E)
-│   ├── transaction_list_20260317204137.txt  # test tiny   (~100M tx; A,B,C,D,E)
-│   ├── transaction_list_20260327174442.txt  # test small  (~10K tx; +D-hypothesis section)
-│   ├── transaction_list_20260327174609.txt  # test large  (~10K tx; +D-hypothesis section)
-│   └── transaction_list_20260327174950.txt  # legacy      (~10K tx; +D-hypothesis section)
+│   └── transaction_list_20260317204137.txt  # test tiny   (~100M tx; A,B,C,D,E)
 ├── docs/
 │   ├── ECDSA_Anomalies_Math_Framework.html  # Full mathematical framework
 │   └── ECDSA_Anomalies_Math_Framework.pdf   # Same, PDF
