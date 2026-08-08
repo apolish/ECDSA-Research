@@ -276,11 +276,20 @@ mjx-container[display="true"]{margin:16px 0 !important; overflow-x:auto; overflo
 </p>
 
 <p>
-  Nor is the practical irrelevance a matter of parameters being merely large. It is structural. The
-  obstruction proved in §10 is information-theoretic: conditioning on every public quantity leaves
-  the conditional distribution of $\zeta$ uniform on $n-2$ values, so there is no leakage for any
-  algorithm, present or future, to amplify. Bigger curves are not the defence; the absence of
-  leakage is.
+  Nor, and this must be stated carefully, is the obstruction information-theoretic. ECDSA has no
+  information-theoretic security at all: $r$ is the abscissa of $R = kG$, so it determines $R$ up
+  to the two points $\pm R$ (plus, on secp256k1, an $x$-coordinate $r+n$ arising with probability
+  $\approx 2^{-128}$), hence $k$ up to a handful of values, hence $x$. The residual entropy of the
+  private key given one signature is a couple of bits, not $\log_2 n$ &mdash; which is exactly why
+  public-key recovery from a signature is a routine operation. The hardness of ECDSA is
+  computational and lives entirely in the elliptic-curve discrete logarithm problem.
+</p>
+
+<p>
+  What §10 proves is therefore a statement about a restricted class of algorithms: those that treat
+  $r$ as an opaque scalar and never invoke the group law. Classes $\mathrm{A}$, $\mathrm{B}$ and
+  $\mathrm{E}$ lie in that class by construction, which is what makes the theorem worth stating.
+  Corollary&nbsp;22 marks the boundary: any rule that beats the bound is obliged to solve ECDLP.
 </p>
 
 <h3><span class="num">1.3</span>On the word "anomaly"</h3>
@@ -1173,6 +1182,20 @@ $$\#\mathrm{A}\approx3.88\times10^{230},\qquad
   </p>
 </div>
 
+<div class="box def">
+  <span class="lbl">Definition &nbsp;(abscissa-oblivious rule)</span>
+  <p style="margin-bottom:0">
+    A rule is <em>abscissa-oblivious</em> if its output distribution is unchanged when the signer's
+    $r = [kG]_x \bmod n$ is replaced by an independent uniform draw from $\mathbb{Z}_n^{*}$.
+    Equivalently: it treats $r$ as an opaque element of $\mathbb{Z}_n$ and never invokes the group
+    law of $E$ &mdash; never forms a curve point, never adds or doubles, never takes a discrete
+    logarithm. Classes $\mathrm{A}$, $\mathrm{B}$ and $\mathrm{E}$ are abscissa-oblivious by
+    construction: every quantity they compute comes from ring operations on $z$, $r$, $s$ plus
+    integer division, and the one scalar multiplication each performs merely <em>verifies</em> a
+    finished candidate.
+  </p>
+</div>
+
 <p>
   Every class of the classification is a rule in this sense. Class $\mathrm{A}$ emits $C=\{a\}$ on
   qualified transactions and $C=\varnothing$ otherwise. Class $\mathrm{E}$ emits the roots
@@ -1187,7 +1210,7 @@ $$\#\mathrm{A}\approx3.88\times10^{230},\qquad
 <div class="box thm">
   <span class="lbl">Theorem 20 &nbsp;(zero yield)</span>
   <p>
-    For every rule $R$,
+    For every abscissa-oblivious rule $R$,
     $$\Pr\bigl[\zeta\in C\bigr]\;=\;
       \frac{\mathbb{E}\bigl|\,C\cap(\mathbb{Z}_n^{*}\setminus\{s\})\,\bigr|}{n-2}
       \;\le\;\frac{\mathbb{E}|C|}{n-2}. \tag{10.1}$$
@@ -1207,9 +1230,9 @@ $$\#\mathrm{A}\approx3.88\times10^{230},\qquad
 </div>
 
 <div class="box thm">
-  <span class="lbl">Corollary 21 &nbsp;(universal no-go)</span>
+  <span class="lbl">Corollary 21 &nbsp;(no-go for abscissa-oblivious rules)</span>
   <p>
-    No public-data classification of ECDSA signatures &mdash; existing, proposed, or not yet
+    No abscissa-oblivious classification of ECDSA signatures &mdash; existing, proposed, or not yet
     conceived &mdash; can achieve a per-candidate success rate different from $1/(n-2)$. In
     particular:
   </p>
@@ -1224,6 +1247,35 @@ $$\#\mathrm{A}\approx3.88\times10^{230},\qquad
       That advantage is purchased entirely by the observation $\zeta\neq s$, which requires no
       algebra at all.</li>
   </ul>
+</div>
+
+<div class="box thm">
+  <span class="lbl">Corollary 22 &nbsp;(the boundary is ECDLP, not information)</span>
+  <p style="margin-bottom:0">
+    A rule whose per-candidate yield exceeds $1/(n-2)$ must fail to be abscissa-oblivious: its
+    output must depend on the true $r=[kG]_x$ in a way an independent uniform $r$ would not
+    reproduce. Any such dependence is a use of the group law. Since $r$ determines $R=\pm kG$ and
+    the step from $R$ to $k$ is a discrete logarithm by definition, such a rule solves an instance
+    of ECDLP.
+  </p>
+</div>
+
+<div class="box erratum">
+  <span class="lbl">What is <em>not</em> being claimed</span>
+  <p>
+    ECDSA has no information-theoretic security, and nothing here suggests otherwise. One signature
+    determines the private key up to a handful of candidates: $r$ fixes the abscissa of $R=kG$, the
+    curve equation gives $R$ up to sign, $k$ follows, and $x=(sk-z)r^{-1}$. On secp256k1 the extra
+    possibility $[R]_x = r+n$ occurs with probability $(p-n)/n \approx 2^{-128}$, so the count is
+    essentially two. The residual entropy of $x$ given $(z,r,s)$ is one or two bits, not $256$
+    &mdash; which is why public-key recovery from a signature is routine.
+  </p>
+  <p style="margin-bottom:0">
+    Assumption R deletes that structure. Doing so is what makes Theorem&nbsp;20 provable and
+    equally what confines it to abscissa-oblivious rules. The theorem is worth stating because the
+    classes under study lie inside that confinement by construction. Reading it as a claim that
+    ECDSA signatures leak nothing would be a serious error.
+  </p>
 </div>
 
 <h3><span class="num">10.3</span>The classes, re-derived in one line each</h3>
@@ -1366,7 +1418,7 @@ $$\#\mathrm{A}\approx3.88\times10^{230},\qquad
   <thead><tr><th>property</th><th>nonce reuse / bias</th><th>classes A, B, E</th></tr></thead>
   <tbody>
     <tr><td>source of leverage</td><td>defect in the signer</td><td>coincidence in the output</td></tr>
-    <tr><td>information gained per signature</td><td>$\Theta(\ell)$ or all $\log_2 n$ bits</td><td>$0$ bits (Thm 20)</td></tr>
+    <tr><td>information gained per signature</td><td>$\Theta(\ell)$ or all $\log_2 n$ bits</td><td>$0$ bits reachable by algebra alone (Thm 20)</td></tr>
     <tr><td>signatures needed</td><td>$2$ to $10^{6}$</td><td>$\sim n$</td></tr>
     <tr><td>scaling in $n$</td><td>polynomial in $\log n$</td><td>linear in $n$</td></tr>
     <tr><td>beats blind guessing?</td><td>by $\sim2^{256}$</td><td class="bad">no &mdash; exact tie, factor $1+2^{-256}$</td></tr>
@@ -1378,12 +1430,16 @@ $$\#\mathrm{A}\approx3.88\times10^{230},\qquad
 </div>
 
 <p>
-  The decisive line in that table is the second one. Under Assumptions U and R, conditioning on every
-  publicly computable quantity leaves the conditional distribution of $\zeta$ uniform over $n-2$
-  values. There is no leakage to amplify. Lattice attacks work because bias in $k$ is real
-  information; classes A, B and E have none to work with, which is why no amount of algebraic
-  ingenuity applied to $a$, $d$, $m_1$ or $m_2$ will ever produce an advantage. The obstruction is
-  information-theoretic, not computational.
+  The decisive line in that table is the second one, and it needs care. It does <em>not</em> say
+  that an ECDSA signature leaks nothing &mdash; it leaks a great deal, since $r$ pins $R=kG$ up to
+  sign and hence pins the key up to a couple of candidates. It says that none of that information
+  is reachable by algebra on $(z,r,s)$ alone. Getting at it means going from the abscissa back to
+  the scalar, which is ECDLP. Lattice attacks succeed because bias in $k$ is information of the
+  cheap kind, accessible without touching the group; classes $\mathrm{A}$, $\mathrm{B}$ and
+  $\mathrm{E}$ have none of that kind to work with, which is why no amount of algebraic ingenuity
+  applied to $a$, $d$, $m_1$ or $m_2$ will produce an advantage. The obstruction is not that the
+  signature is uninformative; it is that these rules are looking in the one place where the
+  information is not.
 </p>
 
 <h2 id="s13"><span class="num">Section 13</span>Falsifiability and power analysis</h2>
@@ -1476,8 +1532,9 @@ $$N \;\gtrsim\; \frac{\bigl(z_{\alpha/2}+z_{\beta}\bigr)^{2}}{p_{0}\bigl(\sqrt{\
   <li>Under an ideal signer, the hidden pair $(s_{zk},s_{rxk})$ is uniform on
     $(\mathbb{Z}_n^{*})^{2}$ and, jointly with the public $s_{zr}$, uniform on a product set
     (Lemma&nbsp;4). Conditioning on all public data leaves $\zeta$ uniform over $n-2$ values.
-    <em>No public statistic constrains the secret.</em> Everything else in this paper is a
-    consequence of that one sentence.</li>
+    <em>No public statistic constrains the secret, within the model.</em> The qualifier is load
+    bearing: the model treats $r$ as independent of $k$, which is false for real ECDSA and is
+    precisely what confines every result below to rules that never invoke the group law.</li>
   <li>The qualification rate is $1/4$ for every curve (Theorem&nbsp;7). The much-cited "$25\%$
     anomaly rate" is the area of the region $s<s_{zr}\le2s$ in the unit square. It is a fact about
     lattice geometry and carries no cryptanalytic content.</li>

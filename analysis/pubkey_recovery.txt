@@ -1,0 +1,9 @@
+curve      : y^2 = x^3 + 4x + 10 over F_1009, prime order n = 1069
+generator  : (0, 162)   ([n]G = infinity)
+trials     : 200  -- true public key recovered in ALL of them
+candidates : {2: 200}   mean = 2.000
+
+residual entropy of x given (z, r, s)  ~ 1.00 bits
+entropy if the signature leaked nothing = 10.06 bits
+
+=> ECDSA has no information-theoretic security. The hardness is ECDLP.

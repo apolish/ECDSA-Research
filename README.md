@@ -2,7 +2,10 @@
 
 **A negative result.** This repository documents an investigation into recurring algebraic
 coincidences in ECDSA signatures generated under ideal, uniformly-random nonces — and the
-theorem that proves the whole family of them cannot carry information.
+theorem that proves no *abscissa-oblivious* rule built on them can outperform random
+guessing. (Scope matters here and is stated precisely below: the theorem is about rules that
+never touch the group law. ECDSA signatures do leak — the hardness is computational, in
+ECDLP, not information-theoretic.)
 
 📄 **Paper:** [`docs/Coincidence_Classes_ECDSA_Zero_Yield.pdf`](docs/Coincidence_Classes_ECDSA_Zero_Yield.pdf)
  · Andriy Polishchuk, CRYPTON Systems Lab, August 2026
@@ -52,11 +55,24 @@ hidden `ζ`. The paper's central theorem is a conservation law.
 > exactly. The success probability **per candidate tested** is therefore the constant
 > `1/(n − 2)` for every rule — identical to sampling uniformly from `Z*_n \ {s}`.
 
-**Consequence.** A classification can change only *how many* candidates are emitted, never
-their *quality*. No public-data classification of ECDSA signatures — existing, proposed, or
-not yet conceived — can beat random guessing. The best conceivable rule wins by a factor of
-`1 + 1/(n − 2) ≈ 1 + 8.6·10⁻⁷⁸` on secp256k1, and that residual advantage is bought by the
-observation `ζ ≠ s` rather than by any of the algebra.
+**Scope — read this part.** The theorem covers **abscissa-oblivious** rules: those that treat
+`r` as an opaque scalar and never invoke the group law. Classes A, B, E are abscissa-oblivious
+by construction — every quantity they compute comes from ring operations on `(z, r, s)` plus
+integer division, and the one scalar multiplication each performs merely *verifies* a finished
+candidate.
+
+**Consequence.** Such a classification can change only *how many* candidates are emitted, never
+their *quality*. The best conceivable abscissa-oblivious rule beats random guessing by a factor
+of `1 + 1/(n − 2) ≈ 1 + 8.6·10⁻⁷⁸` on secp256k1, bought by the observation `ζ ≠ s` rather than
+by any of the algebra. And a rule that *does* beat the bound is obliged to solve ECDLP.
+
+**What this is NOT.** It is not a claim that ECDSA signatures leak nothing. They leak plenty:
+`r` is the abscissa of `R = kG`, so it fixes `R` up to sign, hence `k` up to a couple of
+candidates, hence `x`. The residual entropy of the private key given one signature is one or two
+bits, not 256 — which is why public-key recovery from a signature is a routine operation. **The
+hardness of ECDSA is computational, not information-theoretic, and it lives entirely in ECDLP.**
+The modelling assumption that `r` is independent of `k` is exactly what deletes that structure;
+it is legitimate here only because the classes under study never touch the curve.
 
 This is why the classes below are exercises rather than results. They differ only in `E|C|`.
 
@@ -140,10 +156,12 @@ exact only when `ζ` is the true `z·k⁻¹`. The map is a bijection, so recover
 is a relabelling of the same search space of size `n − 1`. No class produces `ζ` from public
 data alone for an arbitrary signature.
 
-**2. No rule can beat guessing — and this is a theorem, not an observation.** By the
-Zero-Yield Theorem the yield per tested candidate is `1/(n − 2)` for *every* public-data
-rule. Searching for more coincidence classes is therefore provably futile: the space of
-arithmetic coincidences is infinite, and each new member will have the same yield.
+**2. No abscissa-oblivious rule can beat guessing — and this is a theorem, not an
+observation.** The yield per tested candidate is `1/(n − 2)` for *every* rule that treats `r` as
+an opaque scalar. Searching for more coincidence classes of this shape is therefore provably
+futile: the space of arithmetic coincidences is infinite, and each new member has the same
+yield. Beating the bound requires using the group law — i.e. solving ECDLP — which is a
+different problem and not one this repository makes any progress on.
 
 **3. A and E are `Θ(1/n)` coincidences; B is `Θ(log n / n²)`.** Each class is the event "the
 secret pair happens to land on one specific, publicly-computable target." On secp256k1:
@@ -250,16 +268,16 @@ ECDSA-Research/
 │   └── kaggle/                                   # Kaggle notebooks/datasets for large-scale runs
 ├── analysis/
 │   ├── e_control.py                              # Control: E offset σ/2+c gives flat ~2/(3n)
-│   └── enumerate_states.py                       # Exhaustive state-space sweep; Appendix A of the paper
+│   ├── enumerate_states.py                       # Exhaustive state-space sweep; Appendix A of the paper
+│   └── pubkey_recovery.py                        # Verifies Remark 10: residual entropy of x is ~1 bit
 ├── data/
 │   ├── transaction_list_20260221205853.txt       # test small  (~1M tx;   A,B,C,D,E)
 │   ├── transaction_list_20260221212522.txt       # test large  (~1M tx;   A,B,C,D,E)
 │   ├── transaction_list_20260221211749.txt       # legacy      (~10K tx;  A,B,C,D,E)
 │   └── transaction_list_20260317204137.txt       # test tiny   (~100M tx; A,B,C,D,E)
 └── docs/
-    ├── Coincidence_Classes_ECDSA_Zero_Yield.pdf  # The paper (14 pp.)
-    ├── Coincidence_Classes_ECDSA_Zero_Yield.tex  # LaTeX source
-    └── ECDSA_Coincidence_Classes_Zero_Yield.html # Web version
+    ├── Coincidence_Classes_ECDSA_Zero_Yield.pdf  # The paper (15 pp.) — single source of truth
+    └── Coincidence_Classes_ECDSA_Zero_Yield.tex  # LaTeX source
 ```
 
 ## 🚀 Quick Start
@@ -276,25 +294,15 @@ python analysis/e_control.py
 
 # Exhaustive verification of every identity in the paper (needs numpy)
 python analysis/enumerate_states.py
+
+# Why the main theorem is scoped: a signature pins the key to ~2 candidates
+python analysis/pubkey_recovery.py
 ```
 
 `enumerate_states.py` is exhaustive for `n ≤ 1009`, so its output is exact. Every `assert`
 in it is a restatement of a theorem; if one fails, the paper is wrong.
 
 ---
-
-## 📚 Citation
-
-```bibtex
-@misc{polishchuk2026coincidence,
-  author = {Andriy Polishchuk},
-  title  = {Coincidence Classes in the {ECDSA} State Space:
-            A Zero-Yield Theorem, with Exact Frequencies for Classes {A}, {B} and {E}},
-  year   = {2026},
-  note   = {Cryptology ePrint Archive, Paper [ID pending]},
-  url    = {https://eprint.iacr.org/2026/[ID]}
-}
-```
 
 ## 📘 Prior publications
 

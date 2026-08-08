@@ -161,13 +161,17 @@ This paper answers all three, and then shows that answering them was unnecessary
 \subsection{Contributions}
 
 \begin{enumerate}[leftmargin=*,itemsep=3pt]
-\item \textbf{A conservation law (Theorem~\ref{thm:zeroyield}).} For every rule computable from
-  public data, the probability of a correct guess of $\szk$ equals the expected number of
-  candidates emitted, divided by $n-2$. The yield per candidate is therefore a constant,
-  independent of the rule. No classification of ECDSA signatures --- existing, proposed, or not
-  yet conceived --- can beat uniform random guessing on $\Zs\setminus\{s\}$
-  (Corollary~\ref{cor:nogo}). This subsumes every frequency computation in the paper and closes
-  the family.
+\item \textbf{A conservation law (Theorem~\ref{thm:zeroyield}).} For every
+  \emph{abscissa-oblivious} rule --- one that treats $r$ as an opaque scalar and never invokes the
+  group law --- the probability of a correct guess of $\szk$ equals the expected number of
+  candidates emitted, divided by $n-2$. The yield per candidate is a constant, independent of the
+  rule, so no such classification can beat uniform random guessing
+  (Corollary~\ref{cor:nogo}); a rule that does beat it is obliged to solve ECDLP
+  (Corollary~\ref{cor:ecdlp}). We claim no novelty for the underlying fact, which any
+  cryptographer would regard as a restatement of what it means for a signature scheme to be
+  correctly randomised. What the theorem contributes is a boundary: it converts an open-ended
+  hunt for further coincidence classes into a closed question, and it makes precise which
+  property a genuine improvement would have to violate.
 
 \item \textbf{A structure theorem for class $\clE$ (Theorem~\ref{thm:Estruct}).} The three-clause
   ``Goldbach-type'' definition of class $\clE$ is equivalent to the single affine condition
@@ -199,6 +203,17 @@ This paper answers all three, and then shows that answering them was unnecessary
   $32\sigma$ by the data accompanying it.
 \end{enumerate}
 
+\subsection{What is not a contribution}
+
+Honesty about weight is part of the exercise. The following are \emph{not} contributions and are
+not presented as such. The recovery formulas: Proposition~\ref{prop:master} shows they are one
+M\"obius bijection. The taxonomy $\clA$--$\clE$ itself: an arbitrary partition of the analyst's
+bookkeeping rather than of the object. The observation that rare coincidences occur at rate
+$\Theta(1/n)$: folklore. And, as noted above, the substance of
+Theorem~\ref{thm:zeroyield}, which is a formalisation rather than a discovery. The weight of this
+work is that of a technical note recording a closed line of enquiry, and it is circulated as
+such.
+
 \subsection{What this paper does not claim}
 
 It is not a vulnerability disclosure. It contains formulas that map a \emph{correct guess} of
@@ -207,9 +222,16 @@ they constitute a single M\"obius bijection, that is, a change of coordinates on
 size $n-1$, and by Theorem~\ref{thm:zeroyield} no public-data rule can make the guess better than
 uniform. Reading them as an attack is a category error.
 
-The practical irrelevance is not a matter of parameters being merely large. The obstruction is
-information-theoretic: conditioning on every public quantity leaves the conditional law of $\szk$
-uniform on $n-2$ values, so there is no leakage for any algorithm, present or future, to amplify.
+Nor, and this must be stated carefully, is the obstruction information-theoretic. ECDSA has no
+information-theoretic security whatever: $r$ is the abscissa of $R = kG$, so it determines $R$ up
+to the two points $\pm R$ (and, on secp256k1, an $x$-coordinate $r+n$ occurring with probability
+$\approx 2^{-128}$), hence $k$ up to a handful of values, hence $x$. The conditional entropy of
+the private key given one signature is a couple of bits, not $\log_2 n$. What makes ECDSA hard is
+that extracting $k$ from $r$ is an instance of the elliptic-curve discrete logarithm problem.
+Section~\ref{sec:zeroyield} therefore proves a statement about a restricted class of algorithms ---
+those that treat $r$ as an opaque scalar and never invoke the group law --- and
+Corollary~\ref{cor:ecdlp} makes the boundary explicit: any rule that beats the bound is obliged to
+solve ECDLP.
 
 \subsection{Related work}
 
@@ -223,15 +245,17 @@ Heninger~\cite{breitner2019}, the Minerva group~\cite{minerva2020}, and
 LadderLeak~\cite{ladderleak2020}, the last operating on less than one bit of leakage per
 signature. Deterministic nonce derivation~\cite{rfc6979} removes the randomness failure mode at
 the cost of introducing a fault-attack surface. The common feature is that each exploits
-$\Theta(\ell)$ bits of genuine information per signature; Theorem~\ref{thm:zeroyield} shows the
-classes studied here supply zero, which is why they belong to a different category rather than to
-a weaker point on the same spectrum.
+$\Theta(\ell)$ bits of information that is accessible by cheap algebra, whereas the classes studied
+here supply none that an abscissa-oblivious rule can reach (Theorem~\ref{thm:zeroyield}). They
+are therefore not a weaker point on the same spectrum but a different category. The information
+that does remain in a signature --- $r$ determines $k$ up to sign --- is reachable only by solving
+ECDLP, which is the province of~\cite{pollard1978} and not of any classification.
 
 Generic attacks on the underlying discrete logarithm cost $\Theta(\sqrt{n}) \approx 2^{128}$
 operations on secp256k1~\cite{pollard1978}; the curve parameters are those of SEC~2~\cite{sec2},
 and the signature scheme is standardised in FIPS~186-5~\cite{fips1865}. The counting arguments
 below use Dirichlet's divisor theorem in the form given by Hardy and Wright~\cite{hardywright},
-and the physical bounds of Section~\ref{sec:physical} use Landauer's principle~\cite{landauer1961}.
+and Landauer's principle~\cite{landauer1961} is quoted once, for scale only.
 
 \subsection{Organisation}
 
@@ -240,7 +264,7 @@ Section~\ref{sec:model} states the probability model and its structure lemma.
 Section~\ref{sec:zeroyield} proves the main theorem; a reader interested only in the conclusion
 may stop there. Sections~\ref{sec:qual}--\ref{sec:E} instantiate it for the qualification event
 and for classes $\clA$, $\clB$, $\clE$. Section~\ref{sec:numerics} reports the verification,
-Section~\ref{sec:secp} evaluates on secp256k1, Section~\ref{sec:physical} adds physical bounds,
+Section~\ref{sec:secp} evaluates on secp256k1,
 Section~\ref{sec:errata} records the errata, and Section~\ref{sec:disc} discusses falsifiability
 and limitations.
 
@@ -349,20 +373,42 @@ $\zeta$ there are $n-1$ admissible values of $s$.
 (iii) Immediate from the product structure of $\mathcal{S}$.
 \end{proof}
 
-Lemma~\ref{lem:structure}(iii) is the workhorse. After the analyst has computed everything
-computable --- $s$, $\szr$, $d$, $a$, and any function of them --- the hidden component $\zeta$
-remains uniform over $n-2$ possibilities. Conditioning on public data leaves the conditional
-entropy of the secret at $\log_2(n-2)$ bits.
+Lemma~\ref{lem:structure}(iii) is the workhorse. Within the model, after the analyst has computed
+everything computable by modular arithmetic on $(z,r,s)$ --- $\szr$, $d$, $a$, and any function of
+them --- the hidden component $\zeta$ remains uniform over $n-2$ possibilities.
+
+The reader should be clear about the force of this. It is a statement about the model, not about
+ECDSA. Assumption~\ref{as:R} is what makes it true, and Assumption~\ref{as:R} is false: $r$
+determines $R = kG$ up to sign, hence $k$ up to a handful of candidates, hence $\zeta$ and $x$.
+The residual entropy of $\zeta$ given a real signature is one or two bits. What
+Assumption~\ref{as:R} does is sever precisely the link --- from the abscissa back to the scalar ---
+whose difficulty is the entire security of the scheme. That severance is legitimate here for one
+narrow reason, made precise in Definition~\ref{def:oblivious}: the classes under study never touch
+the curve. It would be illegitimate for any conclusion about ECDSA in general, and no such
+conclusion is drawn.
 
 \section{The zero-yield theorem}\label{sec:zeroyield}
 
 \begin{definition}[Public-data rule]\label{def:rule}
-A \emph{rule} is a map $R$ from the public data of a signature --- the curve, $z$, $r$, $s$, and
-anything computable from them, such as $\szr$, $d$, $a$ --- to a finite candidate set
+A \emph{rule} is a map $R$ from the public data of a signature --- $z$, $r$, $s$, and anything
+computable from them, such as $\szr$, $d$, $a$ --- to a finite candidate set
 $C = R(z,r,s) \subseteq \Zs$ for the hidden component $\zeta$. Randomised rules are permitted,
 provided their randomness is independent of the signer's. The rule \emph{succeeds} if
 $\zeta \in C$.
 \end{definition}
+
+\begin{definition}[Abscissa-oblivious rule]\label{def:oblivious}
+A rule is \emph{abscissa-oblivious} if its output distribution is unchanged when the signer's
+$r = [kG]_x \bmod n$ is replaced by an independent uniform draw from $\Zs$. Equivalently: the rule
+treats $r$ as an opaque element of $\mathbb{Z}_n$ and never invokes the group law of $E$ --- it
+never forms a curve point, never adds or doubles, never solves for a discrete logarithm.
+\end{definition}
+
+Classes $\clA$, $\clB$ and $\clE$ are abscissa-oblivious: every quantity they compute
+($\szr = zr$, $d$, $a$, $m_1$, $m_2$, $\alpha$, $\beta$) is obtained by ring operations on
+$z$, $r$, $s$ in $\mathbb{Z}_n$ together with integer division. The single scalar multiplication
+each performs is a \emph{verification} of a finished candidate, not a step in producing one. The
+theorem below applies to exactly this class of rules and to no wider one.
 
 Every class of the classification is a rule. Class $\clA$ emits $C = \{a\}$ on qualified
 transactions and $C = \varnothing$ otherwise. Class $\clE$ emits the roots of \eqref{eq:albe}
@@ -371,7 +417,8 @@ $\{am\}$ for each integer root $m$ of \eqref{eq:Bquad}. Uniform guessing is the 
 $t$ i.i.d.\ uniform draws.
 
 \begin{theorem}[Zero yield]\label{thm:zeroyield}
-For every rule $R$,
+Under Assumptions~\ref{as:U} and~\ref{as:R} --- equivalently, for every abscissa-oblivious rule
+$R$, for which Assumption~\ref{as:R} is by Definition~\ref{def:oblivious} no restriction ---
 \begin{equation}\label{eq:zeroyield}
   \Pro\bigl[\zeta \in C\bigr]
   \;=\; \frac{\Ex\bigl|\,C \cap (\Zs\setminus\{s\})\,\bigr|}{n-2}
@@ -391,8 +438,8 @@ hence conditionally fixed. For a uniform variable on a set of size $n-2$ and a f
 $\Pro[\zeta \in C \mid \text{public}] = |C \cap (\Zs\setminus\{s\})|/(n-2)$. Take expectations.
 \end{proof}
 
-\begin{corollary}[Universal no-go]\label{cor:nogo}
-No public-data classification of ECDSA signatures can achieve a per-candidate success rate
+\begin{corollary}[No-go for abscissa-oblivious rules]\label{cor:nogo}
+No abscissa-oblivious classification of ECDSA signatures can achieve a per-candidate success rate
 different from $1/(n-2)$. Consequently:
 \begin{enumerate}[label=(\roman*),leftmargin=2.2em,itemsep=2pt]
 \item no rule is \emph{better} than uniform guessing on $\Zs\setminus\{s\}$; equality in
@@ -405,6 +452,38 @@ different from $1/(n-2)$. Consequently:
   $\zeta \neq s$, which requires no algebra.
 \end{enumerate}
 \end{corollary}
+
+\begin{corollary}[The boundary is ECDLP, not information]\label{cor:ecdlp}
+A rule whose per-candidate yield exceeds $1/(n-2)$ must fail to be abscissa-oblivious: its output
+must depend on the true $r = [kG]_x$ in a way that an independent uniform $r$ would not reproduce.
+Any such dependence is a use of the group law of $E$. Since $r$ determines $R = \pm kG$ and the
+step from $R$ to $k$ is by definition a discrete logarithm, such a rule solves an instance of
+ECDLP.
+\end{corollary}
+
+\begin{proof}
+Immediate from Definition~\ref{def:oblivious} and Theorem~\ref{thm:zeroyield}. If the rule's
+output law is invariant under replacing $r$ by an independent uniform draw, the theorem applies
+and the yield is $1/(n-2)$. Contrapositively, a yield above $1/(n-2)$ forces non-invariance, that
+is, genuine dependence on the abscissa map $k \mapsto [kG]_x$.
+\end{proof}
+
+\begin{remark}[What is \emph{not} being claimed]\label{rem:notIT}
+ECDSA offers no information-theoretic security, and nothing above suggests otherwise. A single
+signature determines the private key up to a handful of candidates: $r$ fixes the abscissa of
+$R = kG$, the curve equation gives $R$ up to sign, and $k$ follows, whence
+$x = (sk-z)r^{-1}$. On secp256k1 the additional possibility $[R]_x = r+n$ arises with probability
+$(p-n)/n \approx 2^{-128}$, so the candidate count is essentially two. The residual entropy of $x$
+given $(z,r,s)$ is therefore one or two bits, not $256$ --- which is precisely why public-key
+recovery from a signature is a routine operation. The hardness of ECDSA is computational and
+resides entirely in ECDLP.
+
+Assumption~\ref{as:R} deletes that structure. Doing so is what makes
+Theorem~\ref{thm:zeroyield} provable, and it is equally what confines the theorem to
+abscissa-oblivious rules. The theorem is worth stating because classes $\clA$, $\clB$, $\clE$ ---
+and every classification of the same shape --- lie inside that confinement by construction. It
+would be a serious error to read it as a claim that ECDSA signatures leak nothing.
+\end{remark}
 
 \begin{remark}\label{rem:framing}
 The correct negative statement is an equality, not an inequality. ``Worse than guessing'' would
@@ -844,23 +923,14 @@ signatures out there'' has said something true and entirely without consequence,
 that there are $10^{231}$ private keys beginning with any particular $256$-bit prefix. Absolute
 counts in this subject should never be quoted without the density beside them.
 
-\section{Physical bounds}\label{sec:physical}
-
-Independently of any cryptanalytic comparison, the sample sizes above can be priced against
-physics. Landauer's principle~\cite{landauer1961} sets the minimum energy dissipated by an
-irreversible bit operation at $k_BT\ln 2$; at the cosmic microwave background temperature
-$T = 2.725\,$K this is $2.61\times10^{-23}\,$J. Charging one bit erasure per trial --- absurdly
-optimistic, since an ECDSA verification is $10^{4}$ to $10^{5}$ bit operations --- enumerating
-$1/\Pro[\clA] = 4.63\times10^{77}$ trials costs at least $1.21\times10^{55}\,$J. That is the
-total mass--energy of $6.8\times10^{7}$ solar masses, or $2.0\times10^{34}$ years of world primary
-energy consumption. The corresponding figure for class $\clB$ is $1.04\times10^{130}\,$J,
-some $10^{60}$ times the mass--energy of the observable universe.
-
-The class-$\clA$ figure deserves emphasis because it is the cheap one. Converting sixty-eight
-million stars entirely into computation, without losses, is the discounted price of encountering a
-single instance of the most common of the three classes --- and by
-Corollary~\ref{cor:nogo} the instance would yield one private key, obtainable with marginally
-better odds by guessing.
+\begin{remark}[Physical bound, for scale only]
+Landauer's principle~\cite{landauer1961} charges at least $k_BT\ln 2 = 2.61\times10^{-23}\,$J per
+irreversible bit operation at the cosmic microwave background temperature. Even at one bit erasure
+per trial, enumerating $1/\Pro[\clA] = 4.63\times10^{77}$ trials costs $1.21\times10^{55}\,$J, the
+mass--energy of $6.8\times10^{7}$ solar masses. The figure is quoted once, for scale, and no
+argument in this paper rests on it: Corollary~\ref{cor:nogo} already settles the matter at the
+level of algorithms, where it belongs.
+\end{remark}
 
 \section{Errata to previously circulated material}\label{sec:errata}
 
@@ -965,20 +1035,6 @@ positive one would announce itself as a bias in a histogram, not as an elegant i
   $N = \lfloor \zeta/a\rfloor$ is moreover a function of the secret $\zeta$, so the window cannot
   be located without already knowing what it is meant to reveal.
 \end{enumerate}
-
-\subsection{On presentation}
-
-The results belong, if anywhere, as a short technical note in elementary combinatorics and its
-verification: exact cardinalities of a family of subsets of a finite product set, plus a
-conservation law that renders the family uninteresting. They do not belong in a disclosure
-channel, nor under a title containing the words ``recovery'', ``vulnerability'' or ``attack'' ---
-not because the mathematics is weak, but because such a title would be read as a claim the
-mathematics refutes. Three specific cautions follow. The recovery formulas should appear only as
-corollaries of Proposition~\ref{prop:master}, never as procedures, since as procedures they
-require an input equivalent to the answer. The phrase ``$25\%$ of transactions'' should never
-appear without Theorem~\ref{thm:qual} attached, because in isolation it reads as an exposure rate
-when it is the area of a triangle. And absolute counts such as ``$10^{231}$ instances'' should be
-reported only alongside the density $10^{-77}$.
 
 \section{Conclusion}
 
