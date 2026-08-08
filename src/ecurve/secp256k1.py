@@ -1,8 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""PEP 8 compliant secp256k1 demo with key generation, signing, verification,
-and curve analysis for both test and legacy parameters.
+"""PEP 8 compliant secp256k1 demo with key generation, signing, and
+verification for both test and legacy parameters.
+
+POINT REPRESENTATION
+====================
+The point at infinity is represented by ``None`` -- and ONLY by ``None``.
+The original code had two competing sentinels (``None`` from ``point_add``
+and ``(0, 0)`` from ``scalar_multiply``); ``(0, 0)`` is not on either curve
+and leaked silently into callers. See FIX E14.
+
+SIGNATURE TUPLE
+===============
+``sign_message`` returns ``(z, r_x, r_y, s, k, k_inv)`` where:
+  * ``r_x`` is ``(k*G).x mod n``  -- the ECDSA r value, reduced mod n by spec
+  * ``r_y`` is ``(k*G).y mod p``  -- the RAW affine coordinate, NOT reduced
+  * ``s`` is the ECDSA s value, reduced mod n by spec
+  * ``k`` is the ephemeral nonce, which is normally secret and never returned
+
+PUBLIC-ONLY HELPERS
+===================
+``recover_x_from_s_zk`` and ``Secp256k1.verify_x_candidate`` operate on
+``(z, r, s)`` only.  They take a *guess* for ``s_zk = z*k^-1 mod n`` and turn
+it into a private-key candidate, then confirm or reject that candidate on the
+curve.  No secret input is consumed by either function; ``verify_x_candidate``
+is what makes a guess into a proven key rather than an unchecked one.
+
+RANDOMNESS
+==========
+``Secp256k1`` takes an optional ``rng``.  It defaults to
+``random.SystemRandom()`` so that statistics gathered in "test" mode are not
+contaminated by the linear structure of MT19937.  Pass ``random.Random(seed)``
+explicitly when a reproducible run is wanted.
 """
 from __future__ import annotations
 
@@ -11,8 +41,14 @@ import hashlib
 import hmac
 import os
 import random
+import secrets
 import time
-from typing import Optional, Tuple
+from typing import Iterator, Optional, Tuple
+
+try:  # works as a package module (python -m ecurve.secp256k1)
+    from ._ripemd160 import ripemd160 as _ripemd160_fallback
+except ImportError:  # and standalone (python secp256k1.py from inside ecurve/)
+    from _ripemd160 import ripemd160 as _ripemd160_fallback
 
 Point = Optional[Tuple[int, int]]
 
@@ -29,34 +65,14 @@ class CurveParams:
     g: Tuple[int, int]
     n: int
 
-TEST_PARAMS_TINY = CurveParams(
-    name="secp256k1",
-    mode="test",
-    p=10007,
-    a=48,
-    b=22,
-    g=(4, 1668),
-    n=9967
-)
-
-TEST_PARAMS_SMALL = CurveParams(
-    name="secp256k1",
+TEST_PARAMS = CurveParams(
+    name="secp17k1",
     mode="test",
     p=100003,
     a=0,
     b=2,
     g=(20002, 57568),
     n=99667
-)
-
-TEST_PARAMS_LARGE = CurveParams(
-    name="secp256k1",
-    mode="test",
-    p=1_241_690_119,
-    a=1,
-    b=35,
-    g=(311_072_572, 523_565_415),
-    n=1_241_630_743
 )
 
 LEGACY_PARAMS = CurveParams(
@@ -69,12 +85,14 @@ LEGACY_PARAMS = CurveParams(
         0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
         0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,
     ),
-    n=0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+    n=0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141,
 )
 
 
 def encode_varint(i: int) -> bytes:
     """Bitcoin varint encoding."""
+    if i < 0:
+        raise ValueError("varint cannot encode a negative value")
     if i < 0xfd:
         return i.to_bytes(1, "little")
     if i <= 0xffff:
@@ -84,18 +102,26 @@ def encode_varint(i: int) -> bytes:
     return b"\xff" + i.to_bytes(8, "little")
 
 
-def compress_public_key(pub: Tuple[int, int]) -> bytes:
-    """Return compressed SEC representation of a public key (33 bytes)."""
+def compress_public_key(pub: Tuple[int, int], field_bytes: int = 32) -> bytes:
+    """Return compressed SEC representation of a public key.
+
+    ``field_bytes`` is the byte length of the coordinate field; 32 for
+    secp256k1.  The original code hardcoded 32, which silently produced a
+    malformed encoding for any curve with a different field size and would
+    raise ``OverflowError`` for a larger one.
+    """
     x, y = pub
     prefix = 0x02 | (y & 1)
-    return bytes([prefix]) + x.to_bytes(32, "big")
+    return bytes([prefix]) + x.to_bytes(field_bytes, "big")
 
 
 def hash160(data: bytes) -> bytes:
-    """RIPEMD160(SHA256(data)) – Bitcoin HASH160."""
+    """RIPEMD160(SHA256(data)) - Bitcoin HASH160."""
     sha = hashlib.sha256(data).digest()
-    ripe = hashlib.new("ripemd160", sha).digest()
-    return ripe
+    try:
+        return hashlib.new("ripemd160", sha).digest()
+    except (ValueError, TypeError):
+        return _ripemd160_fallback(sha)
 
 
 def make_bitcoin_legacy_sighash_message(
@@ -110,14 +136,14 @@ def make_bitcoin_legacy_sighash_message(
     Parameters
     ----------
     public_key : Tuple[int, int]
-        Uncompressed (x, y) public key of the signer.
+        Public key (x, y) of the signer; it is compressed internally.
     prev_txid : bytes
         32-byte txid of the UTXO being spent (little-endian, per protocol).
     prev_index : int
         Output index within the previous transaction (vout).
     output_value_sats : int
         Value sent to the single output, in satoshi (input minus fee).
-        Note: legacy SIGHASH_ALL does NOT commit to input value — only to
+        Note: legacy SIGHASH_ALL does NOT commit to input value - only to
         output value.  This is the vulnerability that BIP 143 fixes.
     """
     # Version
@@ -186,6 +212,7 @@ def make_bitcoin_legacy_sighash_message(
 
     return preimage
 
+
 def make_bitcoin_segwit_sighash_message(
     public_key: Tuple[int, int],
     prev_txid: bytes = b"\x00" * 32,
@@ -196,7 +223,7 @@ def make_bitcoin_segwit_sighash_message(
     """
     Build a Bitcoin SegWit v0 (BIP 143) SIGHASH_ALL preimage for a simple
     1-in-1-out P2WPKH transaction.
- 
+
     BIP 143 defines a fundamentally different serialization than legacy:
       1.  nVersion              (4 bytes LE)
       2.  hashPrevouts          (32 bytes) - dSHA256 of all input outpoints
@@ -208,18 +235,18 @@ def make_bitcoin_segwit_sighash_message(
       8.  hashOutputs           (32 bytes) - dSHA256 of all serialized outputs
       9.  nLockTime             (4 bytes LE)
       10. nHashType             (4 bytes LE)
- 
+
     Parameters
     ----------
     public_key : Tuple[int, int]
-        Uncompressed (x, y) public key of the signer.
+        Public key (x, y) of the signer; it is compressed internally.
     prev_txid : bytes
         32-byte txid of the UTXO being spent (little-endian, per protocol).
     prev_index : int
         Output index within the previous transaction (vout).
     input_value_sats : int
         Value of the UTXO being spent, in satoshi.  BIP 143 commits to this
-        value — this is the critical anti-fee-manipulation field.
+        value - this is the critical anti-fee-manipulation field.
     output_value_sats : int
         Value sent to the single output, in satoshi (input minus fee).
 
@@ -229,19 +256,19 @@ def make_bitcoin_segwit_sighash_message(
     n_version = (2).to_bytes(4, "little")  # version 2 (common for SegWit tx)
     n_locktime = (0).to_bytes(4, "little")
     n_hashtype = (1).to_bytes(4, "little")  # SIGHASH_ALL
- 
+
     # --- Single input: outpoint from the UTXO being spent ---
     prev_vout = prev_index.to_bytes(4, "little")
     outpoint = prev_txid + prev_vout
- 
+
     sequence = (0xFFFFFFFF).to_bytes(4, "little")
- 
+
     # hashPrevouts = dSHA256(outpoint)  (only one input)
     hash_prevouts = hashlib.sha256(hashlib.sha256(outpoint).digest()).digest()
- 
+
     # hashSequence = dSHA256(sequence)  (only one input)
     hash_sequence = hashlib.sha256(hashlib.sha256(sequence).digest()).digest()
- 
+
     # --- scriptCode for P2WPKH ---
     compressed_pub = compress_public_key(public_key)
     pubkey_hash = hash160(compressed_pub)
@@ -254,10 +281,10 @@ def make_bitcoin_segwit_sighash_message(
         b"\x88"          # OP_EQUALVERIFY
         b"\xac"          # OP_CHECKSIG
     )
- 
+
     # --- Value of the UTXO being spent (BIP 143 critical field!) ---
     value = input_value_sats.to_bytes(8, "little")
- 
+
     # --- Single output: pay to same pubkey hash ---
     out_script_pubkey = (
         b"\x76\xa9\x14"
@@ -270,10 +297,10 @@ def make_bitcoin_segwit_sighash_message(
         + encode_varint(len(out_script_pubkey))
         + out_script_pubkey
     )
- 
+
     # hashOutputs = dSHA256(serialized outputs)  (only one output)
     hash_outputs = hashlib.sha256(hashlib.sha256(serialized_output).digest()).digest()
- 
+
     # --- BIP 143 preimage assembly ---
     preimage = (
         n_version
@@ -287,50 +314,134 @@ def make_bitcoin_segwit_sighash_message(
         + n_locktime
         + n_hashtype
     )
- 
+
     return preimage
 
-def int_to_bytes(value: int, byteorder: str = 'big') -> bytes:
-    """
-    Convert an integer to bytes with the minimum required length.
-    
-    :param value: Integer to convert.
-    :param byteorder: 'big' or 'little' endian.
-    :return: Bytes representation of the integer.
-    """
-    if not isinstance(value, int):
-        raise TypeError("Value must be an integer.")
-    if byteorder not in ('big', 'little'):
-        raise ValueError("byteorder must be 'big' or 'little'.")
 
-    # Handle zero explicitly (bit_length() would return 0)
-    length = max(1, (value.bit_length() + 7) // 8)
-    return value.to_bytes(length, byteorder)
+# ======================================================================
+# PUBLIC-ONLY ECDSA RELATIONS
+# ======================================================================
+def inverse_mod_safe(k: int, m: int) -> Optional[int]:
+    """Modular inverse, or ``None`` when ``k`` is not invertible mod ``m``."""
+    try:
+        return pow(k, -1, m)
+    except ValueError:
+        return None
+
+
+def mod_sqrt_all(a: int, p: int) -> list[int]:
+    """All square roots of ``a`` modulo the odd prime ``p``.
+
+    Returns ``[]`` when ``a`` is a quadratic non-residue.  Replaces the former
+    ``sympy.sqrt_mod`` dependency, which was undeclared and pulled in for this
+    single call.  Uses the p % 4 == 3 shortcut where available (the test curve)
+    and Tonelli-Shanks otherwise (secp256k1, where n % 4 == 1).
+    """
+    a %= p
+    if p == 2:
+        return [a]
+    if a == 0:
+        return [0]
+    if pow(a, (p - 1) // 2, p) != 1:
+        return []
+
+    if p % 4 == 3:
+        r = pow(a, (p + 1) // 4, p)
+        return sorted({r, p - r})
+
+    q, s = p - 1, 0
+    while q % 2 == 0:
+        q //= 2
+        s += 1
+
+    z = 2
+    while pow(z, (p - 1) // 2, p) != p - 1:
+        z += 1
+
+    m, c = s, pow(z, q, p)
+    t, r = pow(a, q, p), pow(a, (q + 1) // 2, p)
+    while t != 1:
+        i, t2 = 0, t
+        while t2 != 1:
+            t2 = t2 * t2 % p
+            i += 1
+        b = pow(c, 1 << (m - i - 1), p)
+        m, c = i, b * b % p
+        t = t * c % p
+        r = r * b % p
+    return sorted({r, p - r})
+
+
+def recover_x_from_s_zk(s_zk: int, s: int, z: int, r: int, n: int) -> Optional[int]:
+    """Turn a guess for ``s_zk = z*k^-1 mod n`` into a private-key candidate.
+
+    From the signature identity ``s = (z + r*x) * k^-1``:
+
+        s_rxk = s - s_zk           = r*x*k^-1
+        k^-1  = s_zk * z^-1
+        x     = z*(s - s_zk) * (r*s_zk)^-1   (mod n)
+
+    Every input is public.  Returns ``None`` when the denominator is not
+    invertible.  This is the single primitive behind every case-A/B/E
+    recovery; the original code re-derived it three times, once with ``k`` as
+    the name of a variable that actually held ``k^-1``.
+    """
+    den_inv = inverse_mod_safe((r * s_zk) % n, n)
+    if den_inv is None:
+        return None
+    return (z % n) * ((s - s_zk) % n) % n * den_inv % n
 
 
 class Secp256k1:
     """Elliptic curve cryptography implementation for secp256k1."""
 
-    def __init__(self, params: CurveParams):
-        """Initialize curve with given parameters."""
+    def __init__(self, params: CurveParams, rng: Optional[random.Random] = None):
+        """Initialize curve with given parameters.
+
+        ``rng`` supplies the randomness used by "test" mode for z and k.  It
+        defaults to ``random.SystemRandom()``: the previous code used the
+        module-level ``random``, i.e. MT19937, whose known linear structure
+        is a poor foundation for statistics about "hidden structure" in the
+        resulting triples.  Pass ``random.Random(seed)`` for reproducibility.
+        """
         self._curve = params
+        self._rng = rng if rng is not None else random.SystemRandom()
 
     @property
     def curve(self) -> CurveParams:
         """Return elliptic curve parameters."""
         return self._curve
-    
-    def _rfc6979_generate_k(self, private_key: int, z: int) -> int:
-        """
-        RFC 6979 deterministic nonce generation (HMAC-SHA256).
-        Used for legacy secp256k1 only.
-        """
+
+    @property
+    def rng(self) -> random.Random:
+        """Return the random source used by test-mode signing."""
+        return self._rng
+
+    # ------------------------------------------------------------------
+    # RFC 6979 (deterministic nonce)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _bits2int(data: bytes, qlen: int) -> int:
+        """RFC 6979 section 2.3.2."""
+        value = int.from_bytes(data, "big")
+        blen = len(data) * 8
+        if blen > qlen:
+            value >>= (blen - qlen)
+        return value
+
+    @staticmethod
+    def _int2octets(value: int, rolen: int) -> bytes:
+        """RFC 6979 section 2.3.3."""
+        return value.to_bytes(rolen, "big")
+
+    def _rfc6979_k_candidates(self, private_key: int, z: int) -> Iterator[int]:
+        """Yield RFC 6979 nonce candidates, in specification order."""
         n = self._curve.n
         qlen = n.bit_length()
         holen = hashlib.sha256().digest_size
         rolen = (qlen + 7) // 8
 
-        bx = private_key.to_bytes(rolen, "big") + z.to_bytes(rolen, "big")
+        bx = self._int2octets(private_key, rolen) + self._int2octets(z, rolen)
 
         v = b"\x01" * holen
         k = b"\x00" * holen
@@ -341,56 +452,49 @@ class Secp256k1:
         v = hmac.new(k, v, hashlib.sha256).digest()
 
         while True:
+            t = b""
+            while len(t) < rolen:
+                v = hmac.new(k, v, hashlib.sha256).digest()
+                t += v
+            candidate = self._bits2int(t, qlen)
+            if 1 <= candidate < n:
+                yield candidate
+            # Reached either because the candidate was out of range (spec
+            # rejection path) or because the caller rejected it and asked for
+            # the next one. Same ladder advance in both cases.
+            k = hmac.new(k, v + b"\x00", hashlib.sha256).digest()
             v = hmac.new(k, v, hashlib.sha256).digest()
-            candidate = int.from_bytes(v, "big")
-            k_candidate = candidate % n
-            if 1 <= k_candidate < n:
-                return k_candidate
+
+    def _rfc6979_generate_k(self, private_key: int, z: int) -> int:
+        """Return the first RFC 6979 nonce candidate for (private_key, z)."""
+        return next(self._rfc6979_k_candidates(private_key, z))
 
     def _generate_private_key(self) -> int:
         """Generate a random private key within the valid range."""
-        length_in_bytes = len(int_to_bytes(self._curve.n, 'big'))
-        # Based on real Bitcoin / secp256k1 model! (for legacy and test curves)
         while True:
-            private_key = int.from_bytes(os.urandom(length_in_bytes), "big")
+            private_key = secrets.randbits(self._curve.n.bit_length())
             if 1 <= private_key < self._curve.n:
                 return private_key
 
     @staticmethod
     def inverse_mod(k: int, p: int) -> int:
         """Compute modular multiplicative inverse of k mod p."""
-        if k == 0:
+        if k % p == 0:
             raise ZeroDivisionError("division by zero")
-        if k < 0:
-            return p - Secp256k1.inverse_mod(-k, p)
-        s, old_s = 0, 1
-        t, old_t = 1, 0
-        r, old_r = p, k
-        while r != 0:
-            quotient = old_r // r
-            old_r, r = r, old_r - quotient * r
-            old_s, s = s, old_s - quotient * s
-            old_t, t = t, old_t - quotient * t
-        gcd, x, _ = old_r, old_s, old_t
-        if gcd != 1:
-            raise ZeroDivisionError("Inverse does not exist.")
-        return x % p
+        return pow(k, -1, p)
 
     def is_on_curve(self, point: Point) -> bool:
-        """Check if a point lies on the elliptic curve."""
+        """Check whether a given point lies on the elliptic curve.
+
+        ``None`` is the point at infinity and is a member of the group by
+        definition, hence True.
+        """
         if point is None:
             return True
         x, y = point
-        return (y**2 - (x**3 + self._curve.a * x + self._curve.b)) % self._curve.p == 0
+        return (y**2 - x**3 - self._curve.a * x - self._curve.b) % self._curve.p == 0
 
-    def point_neg(self, point: Point) -> Point:
-        """Return negative of a point on the curve."""
-        if point is None:
-            return None
-        x, y = point
-        return x, (-y) % self._curve.p
-
-    def point_add(self, p1: Point, p2: Point | None = None) -> Point:
+    def point_add(self, p1: Point, p2: Point) -> Point:
         """Add two elliptic curve points using group law."""
         if p1 is None:
             return p2
@@ -399,7 +503,11 @@ class Secp256k1:
         x1, y1 = p1
         x2, y2 = p2
 
-        if x1 == x2 and y1 != y2:
+        if x1 == x2 and (y1 + y2) % self._curve.p == 0:
+            # p2 == -p1 (covers the y1 == y2 == 0 doubling case, which is a
+            # point of order two). FIX E22: the original tested `y1 != y2`,
+            # which let y1 == y2 == 0 fall into the doubling branch and hit
+            # inverse_mod(0, p) -> ZeroDivisionError.
             return None
 
         if x1 == x2:
@@ -416,68 +524,130 @@ class Secp256k1:
 
     def scalar_multiply(self, k: int, p: Point) -> Point:
         """Perform scalar multiplication of a point by integer k."""
-        if k % self._curve.n == 0 or p is None:
+        if p is None:
             return None
-
+        if k % self._curve.n == 0:
+            return None
         if k < 0:
-            return self.scalar_multiply(-k, self.point_neg(p))
+            k = k % self._curve.n
 
-        result = None
-        addend = p
+        q: Point = None
         while k:
             if k & 1:
-                result = self.point_add(result, addend)
-            addend = self.point_add(addend, addend)
+                q = self.point_add(q, p)
             k >>= 1
-        return result
+            if k:  # skip the final, unused doubling
+                p = self.point_add(p, p)
 
-    def normalize_point(self, q: Point) -> Tuple[int, int]:
-        """Normalize Point (None or tuple) into a concrete 2-tuple (x, y)."""
-        if q is None:
-            return (0, 0)
-        if isinstance(q, tuple) and len(q) == 2:
-            return q
-        return (0, 0)
+        return q
 
     def generate_keypair(self, private_key: Optional[int] = None) -> Tuple[int, Tuple[int, int]]:
         """Generate private and public key pair."""
         if private_key is None:
-            private_key = random.randrange(1, self._curve.n - 1)
+            private_key = self._generate_private_key()
+        if not 1 <= private_key < self._curve.n:
+            # FIX D: the original accepted negative keys via the caller's
+            # `private_key != 0 and private_key < n` test.
+            raise ValueError(
+                f"private key must be in [1, n-1]; got {private_key}"
+            )
         public_key = self.scalar_multiply(private_key, self._curve.g)
-        return private_key, public_key  # type: ignore
+        if public_key is None:
+            raise ValueError("private key maps to the point at infinity")
+        return private_key, public_key
 
-    def hash_message(self, message: bytes) -> int:
-        """Return integer hash of a message modulo curve order."""
+    def hash_message(self, message: bytes, min_start_range: int) -> int:
+        """Return integer hash of a message modulo curve order.
+
+        NOTE: in "test" mode z is randomised and NOT bound to the message.
+        That is deliberate for the toy curve but means test mode is not a
+        signing oracle. Kept as-is; see README.
+        """
         if self._curve.mode == "test":
-            return random.randrange(1, self._curve.n - 1)
+            return self._rng.randrange(min_start_range, self._curve.n - 1)
         # legacy / real secp256k1: use Bitcoin-style double SHA256
-        h = hashlib.sha256(message).digest()
-        h = hashlib.sha256(h).digest()
-        return int.from_bytes(h, "big") % self._curve.n
+        digest = hashlib.sha256(hashlib.sha256(message).digest()).digest()
+        return int.from_bytes(digest, "big") % self._curve.n
 
-    def sign_message(self, private_key: int, message: bytes, min_start_range: int) -> Tuple[int, int, int, int]:
+    def _k_candidates(self, private_key: int, z: int, min_start_range: int) -> Iterator[int]:
+        """Yield nonce candidates appropriate for the curve mode.
+
+        ``min_start_range`` applies to test mode only.  The original code
+        applied it as a post-filter over the RFC 6979 stream as well, which is
+        a silent deviation from the specification: a conforming verifier
+        derives the first in-range candidate, not the first candidate above an
+        arbitrary floor.  It never fired at 256 bits, but it was wrong.
+        """
+        if self._curve.mode == "legacy":
+            yield from self._rfc6979_k_candidates(private_key, z)
+        else:
+            while True:
+                yield self._rng.randrange(min_start_range, self._curve.n - 1)
+
+    def sign_message(
+        self,
+        private_key: int,
+        message: bytes,
+        min_start_range: int = 1,
+    ) -> Tuple[int, int, int, int, int, int]:
         """Create ECDSA signature for a message using private key."""
-        z = self.hash_message(message)
-        while True:
-            if self._curve.mode == "legacy":
-                k = self._rfc6979_generate_k(private_key, z)
-                if k < min_start_range:
-                    continue
-            else: # "test"
-                k = random.randrange(min_start_range, self._curve.n - 1)
-            x, _ = self.scalar_multiply(k, self._curve.g)
-            r = x % self._curve.n
-            if r == 0:
+        if not 1 <= private_key < self._curve.n:
+            raise ValueError(f"private key must be in [1, n-1]; got {private_key}")
+        if not 1 <= min_start_range < self._curve.n - 1:
+            raise ValueError(
+                f"min_start_range must be in [1, n-2]; got {min_start_range}"
+            )
+
+        z = self.hash_message(message, min_start_range)
+        for k in self._k_candidates(private_key, z, min_start_range):
+            point = self.scalar_multiply(k, self._curve.g)
+            if point is None:
+                continue
+            x, y = point
+            r_x = x % self._curve.n
+            r_y = y  # FIX B6: raw affine coordinate, mod p
+            if r_x == 0:
                 continue
             k_inv = self.inverse_mod(k, self._curve.n)
-            s = ((z + r * private_key) * k_inv) % self._curve.n
+            s = ((z + r_x * private_key) * k_inv) % self._curve.n
             if s != 0:
-                return z, r, s, k_inv
+                return z, r_x, r_y, s, k, k_inv
+        raise RuntimeError("nonce candidate stream exhausted")  # unreachable
 
-    def verify_signature(self, public_key: Tuple[int, int], signature: Tuple[int, int, int, int]) -> bool:
+    def verify_x_candidate(self, x: int, z: int, r: int, s: int) -> bool:
+        """Confirm a private-key candidate using public data only.
+
+        For a genuine key, ``k = (z + r*x) * s^-1`` must reproduce the very r
+        that was signed, i.e. ``(k*G).x mod n == r``.  Nothing secret is used.
+
+        This is the step the original pipeline was missing: candidates were
+        printed as ``d_recovered`` without ever being checked, so a guess that
+        happened to be wrong was reported exactly like one that was right.
+        """
+        n = self._curve.n
+        if not 1 <= x < n:
+            return False
+        if not (1 <= r < n and 1 <= s < n):
+            return False
+        s_inv = inverse_mod_safe(s, n)
+        if s_inv is None:
+            return False
+        k = ((z + r * x) % n) * s_inv % n
+        if k == 0:
+            return False
+        point = self.scalar_multiply(k, self._curve.g)
+        return point is not None and point[0] % n == r
+
+    def verify_signature(self, public_key: Tuple[int, int], signature: Tuple[int, int, int, int, int, int]) -> bool:
         """Verify ECDSA signature against a given public key."""
-        z, r, s, _ = signature
+        z, r, _, s, _, _ = signature
         if not (1 <= r < self._curve.n and 1 <= s < self._curve.n):
+            return False
+        # The original skipped public-key validation entirely and would happily
+        # "verify" against a point that is not on the curve.
+        if public_key is None or not self.is_on_curve(public_key):
+            return False
+        if self.scalar_multiply(self._curve.n, public_key) is not None:
             return False
         w = self.inverse_mod(s, self._curve.n)
         u1 = (z * w) % self._curve.n
@@ -486,21 +656,41 @@ class Secp256k1:
         p2 = self.scalar_multiply(u2, public_key)
         if p1 is None or p2 is None:
             return False
-        x, _ = self.point_add(p1, p2)
-        if x is None:
+        total = self.point_add(p1, p2)
+        if total is None:
             return False
+        x, _y = total
         return (x % self._curve.n) == r
+
+    @staticmethod
+    def inverse_point(p: Tuple[int, int], mod_p: int) -> Tuple[int, int]:
+        """Return additive inverse of a point modulo p."""
+        x, y = p
+        return x, (-y) % mod_p
 
     def generate_unique_keys(self, count: int, min_start_range: int) -> list[int]:
         """Generate a list of unique random integers within a specified range."""
-        seen = set()
-        while len(seen) < count:
+        if count < 0:
+            raise ValueError("count must be non-negative")
+        if min_start_range < 1:
+            raise ValueError("min_start_range must be >= 1")
+        available = self._curve.n - min_start_range
+        if count > available:
+            raise ValueError(
+                f"cannot draw {count} unique keys from [{min_start_range}, "
+                f"{self._curve.n - 1}] ({available} values available)"
+            )
+
+        seen: set[int] = set()
+        ordered: list[int] = []
+        while len(ordered) < count:
             candidate = self._generate_private_key()
             if candidate < min_start_range:
                 continue
             if candidate not in seen:
                 seen.add(candidate)
-        return list(seen)
+                ordered.append(candidate)  # insertion order preserved
+        return ordered
 
 
 def print_curve_run(curve: CurveParams, private_key: Optional[int] = None, sig_type: str = "p2pkh") -> None:
@@ -518,64 +708,75 @@ def print_curve_run(curve: CurveParams, private_key: Optional[int] = None, sig_t
 
     t0 = time.time()
     if private_key is not None:
-        _, public_key = ec.generate_keypair(private_key=private_key)
+        _, public_key_Q = ec.generate_keypair(private_key=private_key)
     else:
-        private_key, public_key = ec.generate_keypair()
+        private_key, public_key_Q = ec.generate_keypair()
     print("Private key:")
     print(f"  d: {hex(private_key)[2:]}, {private_key}, ({bin(private_key)[2:]})")
     print("Public key:")
-    print(f"  x: {hex(public_key[0])[2:]}, {public_key[0]}")
-    print(f"  y: {hex(public_key[1])[2:]}, {public_key[1]}")
+    print(f"  x: {hex(public_key_Q[0])[2:]}, {public_key_Q[0]}")
+    print(f"  y: {hex(public_key_Q[1])[2:]}, {public_key_Q[1]}")
     print(f"Spent time: {time.time() - t0:.3f} sec.\n")
 
     t0 = time.time()
-    print(f"Is the point on curve?: {ec.is_on_curve(public_key)}")
+    print(f"Is the point on curve?: {ec.is_on_curve(public_key_Q)}")
     print(f"Spent time: {time.time() - t0:.3f} sec.\n")
 
     t0 = time.time()
     if curve.mode == "legacy":
         prev_txid = os.urandom(32)
         if sig_type == "p2wpkh":
-            # SegWit v0 (P2WPKH) — BIP 143 SIGHASH_ALL preimage
-            message = make_bitcoin_segwit_sighash_message(public_key, prev_txid)
+            message = make_bitcoin_segwit_sighash_message(public_key_Q, prev_txid)
             print("Using BIP 143 SegWit v0 preimage for signing.")
         else:
-            # Legacy P2PKH — traditional SIGHASH_ALL preimage
-            message = make_bitcoin_legacy_sighash_message(public_key, prev_txid)
+            message = make_bitcoin_legacy_sighash_message(public_key_Q, prev_txid)
             print("Using legacy P2PKH preimage for signing.")
     else:
-        # For test curves we keep an arbitrary message; z is randomized in hash_message
         message = b"Hello, secp256k1!"
+        print("Using arbitrary message for signing (test curve).")
     signature = ec.sign_message(private_key, message, min_start_range=1)
     print("Signature parameters:")
-    print(f"  z:   {hex(signature[0])[2:]}, {signature[0]}")
-    print(f"  r:   {hex(signature[1])[2:]}, {signature[1]}")
-    print(f"  s:   {hex(signature[2])[2:]}, {signature[2]}")
-    print(f"  k-1: {hex(signature[3])[2:]}, {signature[3]}")
+    print(f"  z:     {hex(signature[0])[2:]}, {signature[0]}")
+    print(f"  r:     {hex(signature[1])[2:]}, {signature[1]}")
+    print(f"  s:     {hex(signature[3])[2:]}, {signature[3]}")
+    print(f"  k:     {hex(signature[4])[2:]}, {signature[4]}")
+    print(f"  k_inv: {hex(signature[5])[2:]}, {signature[5]}")
     print(f"Spent time: {time.time() - t0:.3f} sec.\n")
 
     t0 = time.time()
-    print(f"Signature validation: {ec.verify_signature(public_key, signature)}")
+    print(f"Signature validation: {ec.verify_signature(public_key_Q, signature)}")
     print(f"Spent time: {time.time() - t0:.3f} sec.\n")
 
 
 def main() -> None:
     """Run demo for both test and legacy curves."""
+    print("============================================================")
+    print("========== DEMO RUNS FOR PREDEFINED 'private_key' ==========")
+    print("============================================================")
+    print("")
+    print("=========== TEST CURVE ===========")
+    d = 99661
+    print_curve_run(curve=TEST_PARAMS, private_key=d)
 
-    print("========== TEST CURVE (TINY) ==========")
-    print_curve_run(curve=TEST_PARAMS_TINY)
+    print("========== LEGACY CURVE ==========")
+    d = 64389052532870313044990203562685705333461655978490098671693221677551702405611
+    print_curve_run(curve=LEGACY_PARAMS, private_key=d)
+    print("========== LEGACY CURVE ==========")
+    print_curve_run(curve=LEGACY_PARAMS, private_key=d, sig_type="p2wpkh")
 
-    print("========== TEST CURVE (SMALL) ==========")
-    print_curve_run(curve=TEST_PARAMS_SMALL)
+    print("")
 
-    print("========== TEST CURVE (LARGE) ==========")
-    print_curve_run(curve=TEST_PARAMS_LARGE)
+    print("============================================================")
+    print("============ DEMO RUNS FOR DYNAMIC 'private_key' ===========")
+    print("============================================================")
+    print("")
+    print("=========== TEST CURVE ===========")
+    print_curve_run(curve=TEST_PARAMS)
 
-    print("============= LEGACY CURVE =============")
+    print("========== LEGACY CURVE ==========")
     print_curve_run(curve=LEGACY_PARAMS)
-
-    print("============= LEGACY CURVE =============")
-    print_curve_run(curve=LEGACY_PARAMS, sig_type="p2wpkh")
+    print("========== LEGACY CURVE ==========")
+    print_curve_run(LEGACY_PARAMS, sig_type="p2wpkh")
 
 
 if __name__ == "__main__":

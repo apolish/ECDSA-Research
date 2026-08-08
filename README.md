@@ -1,310 +1,349 @@
-# ECDSA Research: Coincidence Classes in the ECDSA State Space
+# ECDSA-Research
 
-**A negative result.** This repository documents an investigation into recurring algebraic
-coincidences in ECDSA signatures generated under ideal, uniformly-random nonces — and the
-theorem that proves no *abscissa-oblivious* rule built on them can outperform random
-guessing. (Scope matters here and is stated precisely below: the theorem is about rules that
-never touch the group law. ECDSA signatures do leak — the hardness is computational, in
-ECDLP, not information-theoretic.)
-
-📄 **Paper:** [`docs/Coincidence_Classes_ECDSA_Zero_Yield.pdf`](docs/Coincidence_Classes_ECDSA_Zero_Yield.pdf)
- · Andriy Polishchuk, CRYPTON Systems Lab, August 2026
+An experimental study of the additive decomposition of the ECDSA signature
+scalar, on a small toy curve and on real secp256k1.
 
 > ⚠️ **NOTICE:** This is **not** a vulnerability disclosure. It describes no attack, no
 > partial attack, and no weakening of any deployed parameter set. It does not threaten
-> secp256k1 or any system that uses it, and it does not claim to. The main theorem proves
-> that the techniques catalogued here cannot outperform exhaustive key search, which is
-> itself ~2¹²⁸ times more expensive than the generic attack the curve was designed to
-> resist.
+> secp256k1 or any system that uses it, and it does not claim to.
 
----
-
-## 🔍 Overview
-
-The signing equation `s = (z + r·x)·k⁻¹ mod n` splits additively into a hidden hash/nonce
-part and a hidden key part:
+Every ECDSA signature satisfies
 
 ```text
-ζ = s_zk  = z·k⁻¹        mod n      (hidden)
-ξ = s_rxk = r·x·k⁻¹      mod n      (hidden)
-s = ζ + ξ mod n                     (public)
+s = (z + r*x) * k^-1  (mod n)
 ```
 
-The integer sum `σ = ζ + ξ` is either `s` or `s + n`; which one is invisible publicly, and
-the distinction matters for classes B and E.
-
-This work catalogues five classes (A–E) according to how the hidden pair `(ζ, ξ)` relates
-to publicly-derivable quantities — `s_zr = z·r`, `d = s_zr − s`, `a = s mod d` — and
-derives closed-form recovery for A, B, E plus a cross-transaction search for D.
-
-Then it proves that all of this is a change of coordinates.
-
----
-
-## 🧭 The main result
-
-Every class is a **rule**: a map from public data to a set `C` of candidate values for the
-hidden `ζ`. The paper's central theorem is a conservation law.
-
-> **Zero-Yield Theorem.** For *any* rule computable from public data,
->
-> ```text
-> Pr[ζ ∈ C] = E|C| / (n − 2)
-> ```
->
-> exactly. The success probability **per candidate tested** is therefore the constant
-> `1/(n − 2)` for every rule — identical to sampling uniformly from `Z*_n \ {s}`.
-
-**Scope — read this part.** The theorem covers **abscissa-oblivious** rules: those that treat
-`r` as an opaque scalar and never invoke the group law. Classes A, B, E are abscissa-oblivious
-by construction — every quantity they compute comes from ring operations on `(z, r, s)` plus
-integer division, and the one scalar multiplication each performs merely *verifies* a finished
-candidate.
-
-**Consequence.** Such a classification can change only *how many* candidates are emitted, never
-their *quality*. The best conceivable abscissa-oblivious rule beats random guessing by a factor
-of `1 + 1/(n − 2) ≈ 1 + 8.6·10⁻⁷⁸` on secp256k1, bought by the observation `ζ ≠ s` rather than
-by any of the algebra. And a rule that *does* beat the bound is obliged to solve ECDLP.
-
-**What this is NOT.** It is not a claim that ECDSA signatures leak nothing. They leak plenty:
-`r` is the abscissa of `R = kG`, so it fixes `R` up to sign, hence `k` up to a couple of
-candidates, hence `x`. The residual entropy of the private key given one signature is one or two
-bits, not 256 — which is why public-key recovery from a signature is a routine operation. **The
-hardness of ECDSA is computational, not information-theoretic, and it lives entirely in ECDLP.**
-The modelling assumption that `r` is independent of `k` is exactly what deletes that structure;
-it is legitimate here only because the classes under study never touch the curve.
-
-This is why the classes below are exercises rather than results. They differ only in `E|C|`.
-
----
-
-## 🧩 The classes
-
-All recovery ultimately uses one identity. Given the **true** hidden `ζ`,
+which splits additively into two terms:
 
 ```text
-x = z·(s − ζ)·(r·ζ)⁻¹ mod n
+s_zk  = z * k^-1        (mod n)
+s_rxk = r * x * k^-1    (mod n)
+s     = s_zk + s_rxk    (mod n)
 ```
 
-The map `ζ ↦ x` is a **Möbius bijection** — injective on `Z*_n \ {s}`. So knowing `ζ` is
-*equivalent* to knowing `x`; the formula transports no information from public data to the
-secret. It is an algebraic restatement of the textbook fact that knowing the nonce reveals
-the key. Every class below is just a different guess at `ζ`.
-
-| Class | Condition on the hidden pair | Recovery | `E\|C\|` per signature | Pr[class] |
-|---|---|---|---|---|
-| **A** | `ζ = a`, where `a = s mod d` | one candidate | `Pr[Q] → 1/4` | `Pr[Q]/(n−2) ≈ 1/(4n)` |
-| **B** | `m₁ = m₂ ∈ ℤ`, `m₁ = ζ/a`, `m₂ = (s+s_zr)/ξ` | **integer** quadratic, ≤ 4 candidates | `≈ 0.19·ln n / n` | `≈ 0.19·ln n / n²` |
-| **C** | `m₁ ∈ ℤ`, `m₁ > 1`, `m₁ ≠ m₂` | none derived | — | small-field only |
-| **D** | `f = ζ/a ∉ ℤ`; level `N = ⌊f⌋` | window `[a·N, a·(N+1)]`, width `Θ(n)` | `Θ(n)` | generic case, `= Pr[Q] = 1/4` |
-| **E** | `ζ = 3ξ + 2` or `ξ = 3ζ + 2` | 2 candidates per admissible branch of `σ` | `5/6` | `2⌊(n−3)/3⌋/(n−1)² ≈ 2/(3n)` |
-
-### Class E, restated
-
-The published condition was `|ζ − ξ| = ⌊σ/2⌋ + 1` with `σ` even. That is **exactly
-equivalent** to the affine line
-
-```text
-ζ = 3·ξ + 2      or      ξ = 3·ζ + 2       (over ℤ)
-```
-
-and it forces `σ ≡ 2 (mod 4)`. Recovery: with `σ ∈ {s, s+n}`, `σ ≡ 2 (mod 4)`,
-
-```text
-α = (3σ + 2) / 4        β = σ − α = (σ − 2) / 4        {ζ, ξ} = {α, β}
-```
-
-Note both branches of `σ` must be tried; the earlier formulation silently assumed `σ = s`.
-
-### Class versus detector
-
-`Pr[rule E succeeds] = 5/(6(n−2))` exceeds `Pr[class E] = 2/(3n)`. No contradiction: the
-*class* is defined using the **secret** `σ`, while the *rule* must try both branches and so
-also scores accidental hits from the wrong one. Conflating the two is where informal
-treatments of this subject usually go wrong.
+`s_zk` and `s_rxk` are normally secret, because both contain `k^-1`. This
+repository classifies signatures by whether `s_zk` happens to be pinned down by
+a formula in the **public** data `(z, r, s)` alone — and, when it is, recovers
+the private key and proves the recovery on the curve.
 
 ---
 
-## 📊 Measured versus predicted
-
-Datasets were generated on genuine elliptic curves, so no abscissa heuristic was involved
-in producing them.
-
-| Curve | `n` | Tx sampled | A pred / obs | B pred / obs | E pred / obs | C | D | Pr[Q] obs |
-|---|---|---|---|---|---|---|---|---|
-| tiny  | 9 967 | 99 323 922 | 2 491.8 / **2 465** | 1.75 / **2** | 6 642.2 / **6 746** | 335 131 | 24 407 153 | 0.249132 |
-| small | 99 667 | 1 000 000 | 2.51 / **4** | 2e−4 / **0** | 6.69 / **12** | 580 | 248 814 | 0.249398 |
-| large | 1 241 630 743 | 1 000 000 | 2e−4 / **0** | 3e−12 / **0** | 5e−4 / **0** | 0 | 250 311 | 0.250311 |
-
-Poisson residuals: A `−0.54σ`, `+0.94σ`, `−0.01σ`; E `+1.27σ`, `+2.05σ`, `−0.02σ`. Every
-one is ordinary fluctuation. `Pr[Q]` is the fraction `(A+B+C+D)/N` and converges to the
-predicted `1/4` from below at the rate `Θ(log n / n)`.
-
-Independently, exhaustive enumeration of the **entire** state space for seven primes
-(1.66·10⁹ states, `n ≤ 1009`) confirms the class-A and class-E identities to every digit —
-run `analysis/enumerate_states.py`.
-
----
-
-## 🔬 Honest assessment
-
-The points below are the corrected conclusions of this project. Each is reproducible in
-minutes.
-
-**1. The recovery formula is a tautology, not an attack.** `x = z·(s − ζ)·(r·ζ)⁻¹ mod n` is
-exact only when `ζ` is the true `z·k⁻¹`. The map is a bijection, so recovering `x` from `ζ`
-is a relabelling of the same search space of size `n − 1`. No class produces `ζ` from public
-data alone for an arbitrary signature.
-
-**2. No abscissa-oblivious rule can beat guessing — and this is a theorem, not an
-observation.** The yield per tested candidate is `1/(n − 2)` for *every* rule that treats `r` as
-an opaque scalar. Searching for more coincidence classes of this shape is therefore provably
-futile: the space of arithmetic coincidences is infinite, and each new member has the same
-yield. Beating the bound requires using the group law — i.e. solving ECDLP — which is a
-different problem and not one this repository makes any progress on.
-
-**3. A and E are `Θ(1/n)` coincidences; B is `Θ(log n / n²)`.** Each class is the event "the
-secret pair happens to land on one specific, publicly-computable target." On secp256k1:
-
-```text
-Pr[A]              = 2.159042e−78   = 2^−258.00
-Pr[E]              = 5.757446e−78   = 2^−256.58
-Pr[B]              ≈ 2.5e−153       ≈ 2^−506.9
-Pr[A ∪ B ∪ E]      = 7.916488e−78   = 2^−256.24
-one blind guess    = 8.636169e−78   = 2^−256.00   ← larger than all of the above
-```
-
-Across every secp256k1 signature ever produced (≲10¹⁰), the expected number of instances of
-all three classes combined is ≈ 8·10⁻⁶⁸.
-
-**4. E's "Goldbach structure" is decorative — now proved, not just measured.** "Symmetric
-pair around `σ/2`" is vacuous: *every* pair summing to `σ` is symmetric about `σ/2` by
-definition. The only content is fixing the difference to one value, and by the paper's
-offset-invariance theorem, for **any** integer `c` the class `|ζ − ξ| = σ/2 + c` is exactly
-`ζ = 3ξ + 2c`, with the same frequency `2/(3n)`. The Goldbach value `+1` is one of `Θ(n)`
-interchangeable choices. The control experiment in `analysis/e_control.py` measured a flat
-`≈0.67/n` across offsets; that flatness is a two-line corollary of the class's own algebra.
-
-**5. Class D gives no computational advantage and is circular.** The level `N = ⌊ζ/a⌋` is
-computed from the **secret** `ζ`. Without it you do not know `N`; trying all `N` is exactly
-brute-forcing `ζ ∈ [1, n]`. Even granting `N` for free, the window width `a` is `Θ(n)` on
-average, so `E|C_D| = Θ(n)` and the Zero-Yield Theorem gives success probability `Θ(1)` at
-cost `Θ(n)` — i.e. exhaustive search, ~2¹²⁸ times worse than Pollard rho. The demo "works"
-on `test_small` only because `O(n)` is trivial when `n` is tiny.
-
-**6. The "~25% anomaly rate" is a lattice area, not an exposure rate.** Qualification holds
-iff `s < s_zr ≤ 2s` and `d ∤ s`. That region has area exactly `1/4` in the unit square, so
-`Pr[Q] = 1/4 − Θ(log n / n)` on **every** curve. It measures the geometry of comparing two
-residues mod `n` and has no bearing on key recoverability. Its constancy across curves is a
-reason to expect no exploitability, not a reason to hope for it.
-
-**7. Abundance without density.** The classes are not empty on secp256k1: `#A ≈ 3.9·10²³⁰`
-and `#E ≈ 1.0·10²³¹` instances exist in a space of `1.8·10³⁰⁸`. Both statements are true and
-both are consequence-free — there are equally many private keys beginning with any given
-256-bit prefix. **Absolute counts in this subject must never be quoted without the density
-`≈10⁻⁷⁷` beside them.**
-
----
-
-## 📌 Errata
-
-Three claims from earlier material in this repository are withdrawn. All are recorded in
-§12 of the paper.
-
-| # | Claim | Status | Correction |
-|---|---|---|---|
-| 1 | `Pr[E] = 1/(n−1)` | ❌ wrong | Correct value `2⌊(n−3)/3⌋/(n−1)² ≈ 2/(3n)`. The old formula predicts 9 966.5 events on the tiny curve against 6 746 observed — a **−32.3σ** deviation. It was excluded by the data published alongside it. |
-| 2 | Class B needs a modular square root (Euler criterion, `√Δ mod n`) | ⚠️ superseded | The quadratic `a·m² − σ·m + (s+s_zr) = 0` holds over **ℤ**, so `Δ` must be a *perfect square* — far more restrictive than quadratic residuosity mod `n`. Verified on all 3 823 enumerated instances. The old form also fixed `σ = s`, ignoring wrap-around. |
-| 3 | "The detector loses to guessing by 3.3×" (draft) | ⚠️ superseded | Artefact of the cost accounting. At equal numbers of tested candidates the result is an **exact tie**, up to `1 + 1/(n−2)`. The corrected statement is stronger: a conservation law leaves nothing to optimise. |
-
-The earlier "vulnerability" framing of the prior publications is **no longer endorsed by the
-author**.
-
----
-
-## 🎯 What a real result would look like
-
-Exactly one direction here has non-zero potential: find a class whose frequency
-**systematically exceeds** its `c/n` baseline by a factor `λ > 1` that persists as `n`
-grows. That would contradict the uniformity underlying the Zero-Yield Theorem and would be
-a genuine finding.
-
-Do **not** look for more classes. Test the **distribution** directly. Sample sizes for
-`α = 0.05`, 80% power, class E on the tiny curve:
-
-| detect `λ =` | transactions needed |
-|---|---|
-| 2.00 | 6.8·10⁵ |
-| 1.10 | 4.9·10⁷ |
-| 1.01 | 4.7·10⁹ |
-
-The existing 99.3 M-transaction dataset already resolves a 10% enrichment. Applied to the
-data in hand it constrains `λ` to **1.016 ± 0.012** for class E and **0.989 ± 0.020** for
-class A — excluding any enrichment above 4% at 95% confidence.
-
-The informative experiment: take 10⁸–10⁹ transactions on a curve with `n ≈ 10⁴–10⁵`, form
-the empirical law of `ζ = z·k⁻¹` conditioned on every available public statistic, and test
-uniformity (chi-squared over `√N` bins, or a discrete Fourier test à la Bleichenbacher). A
-null result closes the question. A positive result would announce itself as a bias in a
-histogram, not as an elegant identity.
-
----
-
-## 📁 Structure
+## Repository layout
 
 ```text
 ECDSA-Research/
-├── README.md
-├── LICENSE
+├── data/                                         # generated reports (created on first run)
+│   ├── transaction_list_20260808232542.txt       # test curve   (5K   tx;   C,D)
+│   ├── transaction_list_20260808233004.txt       # legacy curve (5K   tx;     D)
+│   └── transaction_list_20260809003013.txt       # test curve   (100M tx; A,C,D,E)
 ├── src/
 │   ├── ecurve/
-│   │   ├── find_curve.sage                       # Find test elliptic curve parameters
-│   │   ├── secp256k1.py                          # Key-pair generation based on secp256k1
-│   │   └── secp256k1.txt                         # Output of secp256k1.py
-│   ├── utils/
-│   │   ├── generate_transactions.py              # Generate synthetic transactions to a TXT file
-│   │   ├── find_common_private_key.py            # Cross-transaction x-search (class D)
-│   │   └── find_common_private_key.txt           # Output of the above
-│   └── kaggle/                                   # Kaggle notebooks/datasets for large-scale runs
-├── analysis/
-│   ├── e_control.py                              # Control: E offset σ/2+c gives flat ~2/(3n)
-│   ├── enumerate_states.py                       # Exhaustive state-space sweep; Appendix A of the paper
-│   └── pubkey_recovery.py                        # Verifies Remark 10: residual entropy of x is ~1 bit
-├── data/
-│   ├── transaction_list_20260221205853.txt       # test small  (~1M tx;   A,B,C,D,E)
-│   ├── transaction_list_20260221212522.txt       # test large  (~1M tx;   A,B,C,D,E)
-│   ├── transaction_list_20260221211749.txt       # legacy      (~10K tx;  A,B,C,D,E)
-│   └── transaction_list_20260317204137.txt       # test tiny   (~100M tx; A,B,C,D,E)
-└── docs/
-    ├── Coincidence_Classes_ECDSA_Zero_Yield.pdf  # The paper (15 pp.) — single source of truth
-    └── Coincidence_Classes_ECDSA_Zero_Yield.tex  # LaTeX source
+│   │   ├── secp256k1.py                          # curve arithmetic, RFC 6979, sighash preimages,
+│   │   └── _ripemd160.py                         # pure-Python RIPEMD-160 (OpenSSL 3.x fallback)
+│   └── utils/
+│       ├── generate_transactions.py              # signature generator + case classifier + report writer
+│       └── find_common_private_key.py            # search for a key shared by several transactions
+├── tests/
+│   └── run_tests.py                              # regression suite with a tabular console report
+├── LICENSE
+└── README.md
 ```
 
-## 🚀 Quick Start
-
-```bash
-git clone https://github.com/YOUR_USERNAME/ECDSA-Research.git
-cd ECDSA-Research/
-
-# Generate and classify transactions on a test curve
-python src/utils/generate_transactions.py --mode test_tiny --tx_per_key 9966
-
-# Reproduce the E control (the Goldbach offset is not privileged)
-python analysis/e_control.py
-
-# Exhaustive verification of every identity in the paper (needs numpy)
-python analysis/enumerate_states.py
-
-# Why the main theorem is scoped: a signature pins the key to ~2 candidates
-python analysis/pubkey_recovery.py
-```
-
-`enumerate_states.py` is exhaustive for `n ≤ 1009`, so its output is exact. Every `assert`
-in it is a restatement of a theorem; if one fails, the paper is wrong.
+Both scripts in `src/utils/` also run from a flat directory — put
+`secp256k1.py`, `_ripemd160.py` and the script side by side and they will find
+each other.
 
 ---
 
-## 📘 Prior publications
+## Requirements
+
+Python **3.8 or newer**. Standard library only — no `pip install` step.
+
+(`pow(x, -1, m)` is the 3.8 floor. Earlier revisions depended on `sympy` for a
+modular square root; that is now `mod_sqrt_all` in `secp256k1.py`.)
+
+---
+
+## Quick start
+
+```bash
+git clone <this-repo> && cd ECDSA-Research
+
+python3 tests/run_tests.py                       # 17 checks, tabular output
+python3 src/utils/generate_transactions.py       # toy curve, 5000 keys -> data/
+python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
+```
+
+---
+
+## The curves
+
+|---|`test`|`legacy`|
+|---|---|---|
+|name|`secp17k1`|`secp256k1`|
+|p|100003|2²⁵⁶ − 2³² − 977|
+|curve|y² = x³ + 2|y² = x³ + 7|
+|n|99667 (prime, cofactor 1)|the standard group order|
+|z|random, **not bound to the message**|dSHA256 of a Bitcoin sighash preimage|
+|k|random (`SystemRandom` by default)|RFC 6979, deterministic|
+
+The toy curve is a genuine elliptic curve: `G` lies on it, `#E = n = 99667`, and
+the cofactor is 1 — all three are asserted in the test suite.
+
+Note the asymmetry: in `test` mode `z` is drawn at random and is **not** a hash
+of the message, so `test` mode is a source of valid `(z, r, s)` triples, not a
+signing oracle. That is deliberate — it makes the toy curve a fast statistical
+sandbox — but it means test-mode results describe the algebra of the triples,
+not the behaviour of a deployed signer.
+
+---
+
+## The case taxonomy
+
+With `s_zr = z*r mod n` and, when `s_zr > s`,
+
+```python
+a = s mod ((s_zr - s) mod n)
+m1 = s_zk / a
+m2 = (s + s_zr) / s_rxk
+```
+
+| Case | Condition | Is `s_zk` fixed by public data? |
+| --- | --- | --- |
+| **A** | `m1 == 1`, i.e. `s_zk == a` | yes — guess `s_zk = a` |
+| **B** | `m1 == m2`, both integral | yes — `m1` solves `a*m1² − s*m1 + (s + s_zr) ≡ 0 (mod n)` |
+| **C** | `m1` integral, `m1 > 1` | no — `m1` is not determined by `(z, r, s)` |
+| **D** | `m1` not integral | no |
+| **E** | `s_zk + s_rxk == S` and `abs(s_zk − s_rxk) == S//2 + 1`, where `S ∈ {s, s+n}` and `S % 4 == 2` | yes — both parts follow from `S` |
+
+Cases A, B and E are therefore *guesses computable from the signature alone*.
+Each guess is turned into a key candidate by
+
+```text
+x = z*(s - s_zk) * (r*s_zk)^-1  (mod n)
+```
+
+and then **confirmed on the curve**: recompute `k = (z + r*x) * s^-1` and check
+that `(k*G).x mod n == r`. That check also uses public data only. A candidate
+that fails it is counted under `Recovery Rejected` and never reported as a key.
+
+Cases C and D leave `s_zk` undetermined and yield nothing.
+
+### Case E naming
+
+The case-E detector is `_detect_half_difference_split`: it tests whether the
+additive split of `S` has difference exactly `S//2 + 1`.
+
+---
+
+## `generate_transactions.py`
+
+Generates signatures, classifies them, and writes a fixed-width report to
+`data/transaction_list_<timestamp>.txt`.
+
+```bash
+python3 src/utils/generate_transactions.py \
+    --curve-mode test --keys 5000 --tx-per-key 20 --output-count 1000 --seed 42
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--curve-mode {test,legacy}` | `test` | which curve |
+| `--keys N` | 5000 | unique private keys to draw |
+| `--private-key D` | 0 | use one fixed key instead (0 = draw randomly) |
+| `--tx-per-key N` | 1 | signatures per key |
+| `--output-count N` | 1000 | maximum **printed** rows per case (counting is unaffected) |
+| `--d-case-digit N` | -1 | print only this case-D level (-1 = all) |
+| `--min-start-range N` | 1000 | lower bound for test-mode `z` and `k` |
+| `--seed N` | — | reproducible run; omit for `SystemRandom` |
+| `--out-dir PATH` | `data/` | report destination |
+| `--sig-type {p2pkh,p2wpkh}` | `p2pkh` | legacy-mode sighash flavour |
+| `--demo` | off | one key-generation / signing / verification round |
+
+### Report columns
+
+```text
+case  s  s_zk*  s_rxk*  s_zr  z  r_x  r_y  x*  k*  k^{-1}*  a  m1*  m2*  f*  x_recovered  hypothesis
+```
+
+A trailing `*` marks a column that is **not** available to an attacker; it is
+printed for research validation. `x_recovered` holds only candidates that
+passed the on-curve check. Column widths are computed from the data, so a
+256-bit `Fraction` cannot shift the table.
+
+### Statistics block
+
+```text
+Total Key Count: 5000
+Transaction Limit Per Key: 20000
+Total Transaction Count: 100000000
+Signature Space Per Key: 9.933312e+09
+Signature Space All Keys: 9.900134e+14
+Transactions With Valid A: 24985980
+Total Observed Cases: 24986477
+Case A Count: 224
+Case B Count: 0
+Case C Count: 55964
+Case D Count: 24929792
+Case E Count: 670
+Case E Overlapping A Cases: 173
+Hypothesis 001 Count: 300744
+Recovery Attempts: 1564
+Recovery Verified: 894
+Recovery Rejected: 670
+Case D0 Count: 1749153
+...
+```
+
+`Signature Space Per Key` is `(n−1)²`: for a fixed key a signature is determined
+by the pair `(k, z)`. `Total Observed Cases` subtracts the A–D/E overlap so
+nothing is counted twice.
+
+---
+
+## `find_common_private_key.py`
+
+Given several transactions believed to share a key, searches each level window
+
+```text
+s_zk ∈ [a*N, a*(N+1) - 1],   N = floor(s_zk / a)
+```
+
+intersects the resulting candidate sets, and verifies the survivors on the
+curve.
+
+```bash
+python3 src/utils/find_common_private_key.py
+python3 src/utils/find_common_private_key.py --no-verify   # show the raw intersection
+```
+
+```text
+tx1: N = 11, s_zk in [36091, 39371], window = 3,281
+tx2: N = 0,  s_zk in [1,      5724], window = 5,724
+tx3: N = 4,  s_zk in [17504, 21879], window = 4,376
+tx4: N = 0,  s_zk in [1,     12241], window = 12,241
+
+Candidates actually evaluated: 25,622
+Naive Cartesian product (not performed): 1.006005e+15
+Expected coincidental survivors before verification: 1.016
+
+Found common x = 32768  [verified on curve]
+```
+
+Three things to read carefully:
+
+* **Cost.** The algorithm builds one index per transaction and intersects, so
+  the work is `Σ|Wᵢ|` — about 25.6 k here. The Cartesian product is printed
+  only to make clear that it is *not* what happens.
+* **`Expected coincidental survivors` = `Π|Wᵢ| / n^(k−1)`.** When that number
+  approaches 1, the intersection alone proves nothing; measured over 150 random
+  4-transaction bundles the unverified search returned **≈3 impostors per run**
+  alongside the true key. With the on-curve check the count is **0**. Choose
+  bundles that keep this figure well below 1, and never trust `--no-verify`
+  output.
+* **`N` is an input.** It comes from `f = s_zk/a`, which is derived from the
+  secret `s_zk`. The search narrows a window it was given; it does not discover
+  the level.
+
+`f` must be passed as `str`, `Fraction`, `Decimal` or `int`. `float` is refused
+with an explanation: it holds ~16 significant digits, the reports carry 20 (test)
+or 80 (legacy), and at 256-bit scale `int(float(f))` misses the true floor by
+about 4.3·10³⁸.
+
+`--max-window` (default 50,000,000) rejects windows too wide to enumerate. On
+secp256k1 a level window is roughly the size of `a` itself, so `legacy` mode is
+refused with a clear error instead of hanging.
+
+---
+
+## Tests
+
+```bash
+python3 tests/run_tests.py            # table
+python3 tests/run_tests.py -k window  # filter by Class.method substring
+python3 tests/run_tests.py -v         # full tracebacks on failure
+python3 tests/run_tests.py --no-color
+```
+
+Exit status is 0 on success and 1 otherwise. The `Detail` column reports the
+value each test actually measured rather than a column of "ok":
+
+```text
+ #   | Test                                                    | Status | Time   | Detail
+-----+---------------------------------------------------------+--------+--------+--------------------------------------
+     | CURVE PARAMETERS AND PRIMITIVES                         |        |        |
+ 1   |   Toy curve is a real curve of prime order              |  PASS  | 0.102s | #E = n = 99667, cofactor 1, G on curve
+ 2   |   RFC 6979 nonce matches published secp256k1 vectors    |  PASS  | 0.000s | 3/3 published vectors
+...
+ 16  |   On-curve verification collapses the intersection...   |  PASS  | 1.338s | 25 runs: 0.56 impostors raw -> 0.00 verified
+```
+
+Independently confirmed by the suite: the toy curve's group order equals `n`
+with cofactor 1; the RFC 6979 implementation reproduces the published
+secp256k1 test vectors; the RIPEMD-160 fallback matches the official vectors
+including a multi-block input.
+
+---
+
+## Measured results
+
+Case A and case E do recover a private key from public parameters alone, and
+the curve confirms it. How often they fire is the load-bearing question, and
+the answer is on the repository's own 10⁸-transaction run on the toy curve:
+
+| case   | observed rate                        | chance rate                       | ratio    |
+|:-------|:-------------------------------------|:----------------------------------|:---------|
+| case A | 248 / 24,980,985 = 9.93·10⁻⁶         | `1/n` = 1.003·10⁻⁵                | **0.99** |
+| case B | ? / ?                                | `?` = ?                           | **?**    |
+| case E | 591 / 100,000,000 = 5.91·10⁻⁶        | `1/(2n)` = 5.02·10⁻⁶              | **1.18** |
+
+That is the rate of guessing `k^-1` at random. The formulas do not find `s_zk`;
+they name one value out of `n`, and occasionally it is the right one.
+
+The consequence for real secp256k1 is arithmetic, not opinion: the same events
+occur with probability ≈ 2⁻²⁵⁶ per signature. Nothing here is a practical
+attack on Bitcoin keys, and the code makes no attempt to be one — `legacy` mode
+exists so the same algebra can be checked at full scale, and
+`find_common_private_key.py` refuses to run there.
+
+### HYP-001
+
+The case-D hypothesis reduces to a relation between the first two partial
+quotients of the continued fraction of `s_zk/a`:
+
+```text
+floor(a / (s_zk mod a)) ∈ { N, N-1 },   N = floor(s_zk / a)
+```
+
+Evaluated on completely random, independent `(s, s_zk, a)` triples it fires at:
+
+| modulus scale | 2¹⁷    | 2⁶⁴    | 2²⁵⁶   | 2⁵¹²   |
+|:--------------|:-------|:-------|:-------|:-------|
+| HYP-001 rate  | 0.49 % | 0.50 % | 0.50 % | 0.49 % |
+
+Scale-invariant, and matching the Gauss–Kuzmin distribution of continued-fraction
+quotients. It is a property of the ratio `s_zk/a`, not of ECDSA. Rates observed
+in real runs (0.73 %, 0.90 % over ~1230 rows) are within noise of 0.50 %.
+
+---
+
+## Known limits
+
+* `test`-mode `z` is not a hash of the message, so test-mode triples are not
+  signatures a verifier would accept against a message.
+* Cases C and D are not recoverable: `m1` is not a function of the public data.
+* Case B has never been observed in a real run; its quadratic is validated
+  synthetically in the test suite.
+* Level windows are only usable at toy scale.
+* The classification is representative-dependent by construction. `s % 2`,
+  `s_zr > s` and `m1 > 1` treat elements of ℤₙ as integers, and `n` is odd, so
+  `s` and `s + n` are the same group element with different parity — case E
+  relies on exactly this by choosing `S ∈ {s, s+n}`. Any statistic drawn from
+  these tests describes the chosen integer representatives, not the group.
+
+---
+
+## Prior publications
 
 Earlier write-ups of classes A and B. **Superseded by the assessment above: their
 "vulnerability" framing is no longer endorsed by the author.** Kept for the record.
@@ -314,7 +353,9 @@ https://doi.org/10.6084/m9.figshare.29223701
 https://doi.org/10.21203/rs.3.rs-6790872/v1
 ```
 
-## 👤 Author
+---
+
+## Author
 
 **Andriy Polishchuk** — CRYPTON Systems Lab
 📧 andriy.polishchuk.a@gmail.com
@@ -322,14 +363,6 @@ https://doi.org/10.21203/rs.3.rs-6790872/v1
 *Independent researcher. CRYPTON Systems Lab is an independent research group and not an
 institutional affiliation.*
 
-## 🔗 License
+## License
 
 Released under the MIT License (see `LICENSE`).
-
----
-
-### STATUS: Concluded — negative result
-
-The question this repository set out to answer is closed by the Zero-Yield Theorem. The
-repository is kept public for transparency and as a record of a dead end that is easy to
-walk into, so that others do not re-discover it as a "break."
