@@ -283,19 +283,6 @@ in it is a restatement of a theorem; if one fails, the paper is wrong.
 
 ---
 
-## 📚 Citation
-
-```bibtex
-@misc{polishchuk2026coincidence,
-  author = {Andriy Polishchuk},
-  title  = {Coincidence Classes in the {ECDSA} State Space:
-            A Zero-Yield Theorem, with Exact Frequencies for Classes {A}, {B} and {E}},
-  year   = {2026},
-  note   = {Cryptology ePrint Archive, Paper [ID pending]},
-  url    = {https://eprint.iacr.org/2026/[ID]}
-}
-```
-
 ## 📘 Prior publications
 
 Earlier write-ups of classes A and B. **Superseded by the assessment above: their
