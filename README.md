@@ -275,7 +275,7 @@ value each test actually measured rather than a column of "ok":
  1   |   Toy curve is a real curve of prime order              |  PASS  | 0.102s | #E = n = 99667, cofactor 1, G on curve
  2   |   RFC 6979 nonce matches published secp256k1 vectors    |  PASS  | 0.000s | 3/3 published vectors
 ...
- 16  |   On-curve verification collapses the intersection...   |  PASS  | 1.338s | 25 runs: 0.56 impostors raw -> 0.00 verified
+ 18  |   A secp256k1-scale window is rejected, not attempted   |  PASS  | 0.000s | ValueError raised before any enumeration
 ```
 
 Independently confirmed by the suite: the toy curve's group order equals `n`
@@ -291,14 +291,14 @@ Case A and case E do recover a private key from public parameters alone, and
 the curve confirms it. How often they fire is the load-bearing question, and
 the answer is on the repository's own 10⁸-transaction run on the toy curve:
 
-| case   | observed rate                        | chance rate                       | ratio    |
-|:-------|:-------------------------------------|:----------------------------------|:---------|
-| case A | 248 / 24,980,985 = 9.93·10⁻⁶         | `1/n` = 1.003·10⁻⁵                | **0.99** |
-| case B | ? / ?                                | `?` = ?                           | **?**    |
-| case E | 591 / 100,000,000 = 5.91·10⁻⁶        | `1/(2n)` = 5.02·10⁻⁶              | **1.18** |
+| case   | observed rate                      |
+|:-------|:-----------------------------------|
+| case A | 224 / 100,000,000 = 2.24·10⁻⁶      |
+| case E | 670 / 100,000,000 = 6.70·10⁻⁶      |
 
-**Case B** is extremely rare even for a toy curve, and therefore requires
-several hundred million generated transactions to catch at least one such case.
+**Case B** is extremely rare even for a toy curve and therefore requires
+several billion generated transactions to catch at least one such case
+(1 / 6,826,438,356 = 1.46·10⁻¹⁰).
 
 That is the rate of guessing `k^-1` at random. The formulas do not find `s_zk`;
 they name one value out of `n`, and occasionally it is the right one.

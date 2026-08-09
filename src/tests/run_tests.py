@@ -50,7 +50,7 @@ from ecurve.secp256k1 import (  # noqa: E402
 from ecurve._ripemd160 import ripemd160  # noqa: E402
 from utils.generate_transactions import (  # noqa: E402
     _detect_half_difference_split, _half_difference_parts, _guesses_case_b,
-    _check_hypothesis_005, _format_ratio, recover_private_keys,
+    _check_hypothesis_001, _format_ratio, recover_private_keys,
 )
 from utils.find_common_private_key import (  # noqa: E402
     ECDSATransaction, exact_level, s_zk_window, window_size, find_common_x,
@@ -195,7 +195,8 @@ class TestRecovery(ResearchTestCase):
         "test_case_b_quadratic",
         "test_half_difference_split",
         "test_case_a_and_e_recover_real_signatures",
-        "test_hypothesis_005_matches_definition",
+        "test_case_e_covers_both_parity_branches",
+        "test_hypothesis_001_matches_definition",
     )
 
     def test_recover_and_verify_public_only(self):
@@ -234,11 +235,16 @@ class TestRecovery(ResearchTestCase):
         self.note(f"{checked}/{checked} roots contain the true s_zk")
 
     def test_half_difference_split(self):
-        """Case-E split reconstructs S and its S//2+1 difference"""
+        """Case-E split is integral exactly for S = 1 or 2 (mod 4)"""
         n = TEST_PARAMS.n
         checked = 0
         for big_s in range(2, 40_000):
-            if big_s % 4 != 2:
+            larger, smaller = _half_difference_parts(big_s)
+            integral = (larger + smaller == big_s
+                        and abs(larger - smaller) == big_s // 2 + 1)
+            self.assertEqual(integral, big_s % 4 in (1, 2),
+                             f"S={big_s} integrality disagrees with S%4")
+            if big_s % 4 not in (1, 2):
                 continue
             larger, smaller = _half_difference_parts(big_s)
             self.assertEqual(larger + smaller, big_s)
@@ -247,7 +253,7 @@ class TestRecovery(ResearchTestCase):
                 detected, _ = _detect_half_difference_split(big_s, larger, smaller, n)
                 self.assertTrue(detected)
             checked += 1
-        self.note(f"{checked} values of S, 0 inconsistencies")
+        self.note(f"{checked} values of S; integral iff S%4 in (1,2)")
 
     def test_case_a_and_e_recover_real_signatures(self):
         """Real case-A and case-E signatures yield a verified key"""
@@ -295,8 +301,36 @@ class TestRecovery(ResearchTestCase):
         self.assertTrue(seen_a and seen_e, "scan found no case A / case E sample")
         self.note(f"{scanned:,} scanned -> A x{seen_a}, E x{seen_e}, all verified")
 
-    def test_hypothesis_005_matches_definition(self):
-        """HYP-005 agrees with its algebraic definition, never divides by zero"""
+    def test_case_e_covers_both_parity_branches(self):
+        """Case E is detected for S = 1 (mod 4) as well as S = 2 (mod 4)"""
+        ec = Secp256k1(TEST_PARAMS, rng=random.Random(21))
+        n = TEST_PARAMS.n
+        rnd = random.Random(22)
+        seen = {1: 0, 2: 0}
+        for _ in range(400_000):
+            if seen[1] and seen[2]:
+                break
+            d = rnd.randrange(1, n - 1)
+            z, r, s, k_inv = _signature(ec, d, rnd)
+            s_zk = (z * k_inv) % n
+            s_rxk = (s - s_zk) % n
+            big_s = s_zk + s_rxk
+            if abs(s_zk - s_rxk) != big_s // 2 + 1:
+                continue
+            branch = big_s % 4
+            if branch not in seen:
+                continue
+            detected, case = _detect_half_difference_split(s, s_zk, s_rxk, n)
+            self.assertTrue(detected, f"S%4={branch} must be detected")
+            keys, _ = recover_private_keys(ec, case, s, 0, z, r, 0)
+            self.assertIn(d, keys)
+            seen[branch] += 1
+        self.assertTrue(seen[1] and seen[2],
+                        f"did not sample both branches: {seen}")
+        self.note(f"S%4=1 seen {seen[1]}x, S%4=2 seen {seen[2]}x, both recovered")
+
+    def test_hypothesis_001_matches_definition(self):
+        """HYP-001 agrees with its algebraic definition, never divides by zero"""
         rnd = random.Random(7)
         fired = 0
         trials = 20_000
@@ -306,12 +340,12 @@ class TestRecovery(ResearchTestCase):
             s = rnd.randrange(1, 10 ** 6)
             level = s_zk // a
             w = s_zk - level * a
-            result = _check_hypothesis_005(level, s, s_zk, a)
+            result = _check_hypothesis_001(level, s, s_zk, a)
             if not (level > 1 and s > s_zk and s_zk % 2 == 0 and w > 0):
                 self.assertEqual(result, "-")
                 continue
             expected = level * w - ((level * a % w) - ((level + 1) * a % w)) == a
-            self.assertEqual(result == "HYP-005", expected)
+            self.assertEqual(result == "HYP-001", expected)
             fired += bool(expected)
         self.note(f"{trials:,} triples, 0 deviations, fired {fired}x "
                   f"({100 * fired / trials:.2f}%)")
