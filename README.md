@@ -297,6 +297,9 @@ the answer is on the repository's own 10⁸-transaction run on the toy curve:
 | case B | ? / ?                                | `?` = ?                           | **?**    |
 | case E | 591 / 100,000,000 = 5.91·10⁻⁶        | `1/(2n)` = 5.02·10⁻⁶              | **1.18** |
 
+**Case B** is extremely rare even for a toy curve, and therefore requires
+several hundred million generated transactions to catch at least one such case.
+
 That is the rate of guessing `k^-1` at random. The formulas do not find `s_zk`;
 they name one value out of `n`, and occasionally it is the right one.
 
