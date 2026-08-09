@@ -369,6 +369,16 @@ https://doi.org/10.21203/rs.3.rs-6790872/v1
 *Independent researcher. CRYPTON Systems Lab is an independent research group and not an
 institutional affiliation.*
 
+---
+
 ## License
 
 Released under the MIT License (see `LICENSE`).
+
+---
+
+## Project on JIRA
+
+Tracking and monitoring tasks related to the current project can be found here:
+
+[![Go to JIRA](https://img.shields.io/badge/JIRA-Visit-blue)](https://cryptonsystemslab.atlassian.net/jira/core/projects/CSL/board?filter=&groupBy=status&atlOrigin=eyJpIjoiZWYwNGI4ODlhYmZjNDdkNGIwMGM3NWUwNzk0MTBjNGYiLCJwIjoiaiJ9)
