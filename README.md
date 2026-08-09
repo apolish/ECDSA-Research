@@ -311,6 +311,9 @@ exists so the same algebra can be checked at full scale, and
 
 ### HYP-001
 
+The **hypothesis feature** was added to support further research and
+hypothesis testing, so hypothesis HYP-001 is provided here as an example only.
+
 The case-D hypothesis reduces to a relation between the first two partial
 quotients of the continued fraction of `s_zk/a`:
 
