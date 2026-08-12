@@ -437,7 +437,7 @@ Algebraic Coincidence Classes in ECDSA: Chance-Rate Occurrence and a Constructiv
 Separation
 
 ```text
-https://doi.org/10.6084/m9.figshare.29223701
+https://doi.org/10.6084/m9.figshare.33235473
 ```
 
 ---
