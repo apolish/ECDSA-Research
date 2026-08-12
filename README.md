@@ -1,7 +1,7 @@
 # ECDSA-Research
 
 An experimental study of the additive decomposition of the ECDSA signature
-scalar, on a small toy curve and on real secp256k1.
+scalar, on a small test curve and on real secp256k1.
 
 > ⚠️ **NOTICE:** This is **not** a vulnerability disclosure. It describes no attack, no
 > partial attack, and no weakening of any deployed parameter set. It does not threaten
@@ -70,7 +70,7 @@ modular square root; that is now `mod_sqrt_all` in `secp256k1.py`.)
 git clone <this-repo> && cd ECDSA-Research
 
 python3 tests/run_tests.py                       # 17 checks, tabular output
-python3 src/utils/generate_transactions.py       # toy curve, 5000 keys -> data/
+python3 src/utils/generate_transactions.py       # test curve, 5000 keys -> data/
 python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
 ```
 
@@ -87,12 +87,12 @@ python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
 |z|random, **not bound to the message**|dSHA256 of a Bitcoin sighash preimage|
 |k|random (`SystemRandom` by default)|RFC 6979, deterministic|
 
-The toy curve is a genuine elliptic curve: `G` lies on it, `#E = n = 99667`, and
+The test curve is a genuine elliptic curve: `G` lies on it, `#E = n = 99667`, and
 the cofactor is 1 — all three are asserted in the test suite.
 
 Note the asymmetry: in `test` mode `z` is drawn at random and is **not** a hash
 of the message, so `test` mode is a source of valid `(z, r, s)` triples, not a
-signing oracle. That is deliberate — it makes the toy curve a fast statistical
+signing oracle. That is deliberate — it makes the test curve a fast statistical
 sandbox — but it means test-mode results describe the algebra of the triples,
 not the behaviour of a deployed signer.
 
@@ -272,13 +272,13 @@ value each test actually measured rather than a column of "ok":
  #   | Test                                                    | Status | Time   | Detail
 -----+---------------------------------------------------------+--------+--------+--------------------------------------
      | CURVE PARAMETERS AND PRIMITIVES                         |        |        |
- 1   |   Toy curve is a real curve of prime order              |  PASS  | 0.102s | #E = n = 99667, cofactor 1, G on curve
+ 1   |   Test curve is a real curve of prime order             |  PASS  | 0.102s | #E = n = 99667, cofactor 1, G on curve
  2   |   RFC 6979 nonce matches published secp256k1 vectors    |  PASS  | 0.000s | 3/3 published vectors
 ...
  18  |   A secp256k1-scale window is rejected, not attempted   |  PASS  | 0.000s | ValueError raised before any enumeration
 ```
 
-Independently confirmed by the suite: the toy curve's group order equals `n`
+Independently confirmed by the suite: the test curve's group order equals `n`
 with cofactor 1; the RFC 6979 implementation reproduces the published
 secp256k1 test vectors; the RIPEMD-160 fallback matches the official vectors
 including a multi-block input.
@@ -289,14 +289,14 @@ including a multi-block input.
 
 Case A and case E do recover a private key from public parameters alone, and
 the curve confirms it. How often they fire is the load-bearing question, and
-the answer is on the repository's own 10⁸-transaction run on the toy curve:
+the answer is on the repository's own 10⁸-transaction run on the test curve:
 
 | case   | observed rate                      |
 |:-------|:-----------------------------------|
 | case A | 224 / 100,000,000 = 2.24·10⁻⁶      |
 | case E | 670 / 100,000,000 = 6.70·10⁻⁶      |
 
-**Case B** is extremely rare even for a toy curve and therefore requires
+**Case B** is extremely rare even for a test curve and therefore requires
 several billion generated transactions to catch at least one such case
 (1 / 6,826,438,356 = 1.46·10⁻¹⁰).
 

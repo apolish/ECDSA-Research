@@ -560,7 +560,7 @@ class Secp256k1:
         """Return integer hash of a message modulo curve order.
 
         NOTE: in "test" mode z is randomised and NOT bound to the message.
-        That is deliberate for the toy curve but means test mode is not a
+        That is deliberate for the test curve but means test mode is not a
         signing oracle. Kept as-is; see README.
         """
         if self._curve.mode == "test":

@@ -100,7 +100,7 @@ class TestCurve(ResearchTestCase):
     )
 
     def test_test_curve_parameters(self):
-        """Toy curve is a real curve of prime order"""
+        """Test curve is a real curve of prime order"""
         ec = Secp256k1(TEST_PARAMS)
         c = TEST_PARAMS
         self.assertTrue(ec.is_on_curve(c.g))
