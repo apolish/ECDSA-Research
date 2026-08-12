@@ -1,7 +1,7 @@
 # ECDSA-Research
 
 An experimental study of the additive decomposition of the ECDSA signature
-scalar, on a small test curve and on real secp256k1.
+scalar on a small test curve and on real secp256k1.
 
 > ⚠️ **NOTICE:** This is **not** a vulnerability disclosure. It describes no attack, no
 > partial attack, and no weakening of any deployed parameter set. It does not threaten
