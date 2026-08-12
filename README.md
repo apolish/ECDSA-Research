@@ -37,6 +37,9 @@ ECDSA-Research/
 │   ├── transaction_list_20260808233004.txt       # legacy curve (5K   tx; _,_,_,D,_ cases)
 │   ├── transaction_list_20260809003013.txt       # test curve   (100M tx; A,B,C,D,E cases)
 │   └── transaction_list_20260812223812.txt       # legacy curve (50   tx; A,_,_,_,E cases)
+├── docs/
+│   ├── null_model_experiment.py                  # attachment for 'ECDSA_coincidence_classes.pdf' paper
+│   └── ECDSA_coincidence_classes.pdf             # published paper
 ├── src/
 │   ├── ecurve/
 │   │   ├── secp256k1.py                          # curve arithmetic, RFC 6979, sighash preimages,
@@ -424,6 +427,17 @@ Earlier write-ups of classes A and B. **Superseded by the assessment above: thei
 ```text
 https://doi.org/10.6084/m9.figshare.29223701
 https://doi.org/10.21203/rs.3.rs-6790872/v1
+```
+
+---
+
+## Current publications
+
+Algebraic Coincidence Classes in ECDSA: Chance-Rate Occurrence and a Constructive
+Separation
+
+```text
+https://doi.org/10.6084/m9.figshare.29223701
 ```
 
 ---
