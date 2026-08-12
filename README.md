@@ -33,15 +33,17 @@ the private key and proves the recovery on the curve.
 ```text
 ECDSA-Research/
 ├── data/                                         # generated reports (created on first run)
-│   ├── transaction_list_20260808232542.txt       # test curve   (5K   tx;   C,D)
-│   ├── transaction_list_20260808233004.txt       # legacy curve (5K   tx;     D)
-│   └── transaction_list_20260809003013.txt       # test curve   (100M tx; A,C,D,E)
+│   ├── transaction_list_20260808232542.txt       # test curve   (5K   tx; _,_,C,D,_ cases)
+│   ├── transaction_list_20260808233004.txt       # legacy curve (5K   tx; _,_,_,D,_ cases)
+│   ├── transaction_list_20260809003013.txt       # test curve   (100M tx; A,B,C,D,E cases)
+│   └── transaction_list_20260812223812.txt       # legacy curve (50   tx; A,_,_,_,E cases)
 ├── src/
 │   ├── ecurve/
 │   │   ├── secp256k1.py                          # curve arithmetic, RFC 6979, sighash preimages,
 │   │   └── _ripemd160.py                         # pure-Python RIPEMD-160 (OpenSSL 3.x fallback)
 │   └── utils/
 │       ├── generate_transactions.py              # signature generator + case classifier + report writer
+│       ├── class_forge.py                        # direct constructor for class A/B/E signatures
 │       └── find_common_private_key.py            # search for a key shared by several transactions
 ├── tests/
 │   └── run_tests.py                              # regression suite with a tabular console report
@@ -69,7 +71,7 @@ modular square root; that is now `mod_sqrt_all` in `secp256k1.py`.)
 ```bash
 git clone <this-repo> && cd ECDSA-Research
 
-python3 tests/run_tests.py                       # 17 checks, tabular output
+python3 tests/run_tests.py                       # 21 checks, tabular output
 python3 src/utils/generate_transactions.py       # test curve, 5000 keys -> data/
 python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
 ```
@@ -139,7 +141,9 @@ additive split of `S` has difference exactly `S//2 + 1`.
 ## `generate_transactions.py`
 
 Generates signatures, classifies them, and writes a fixed-width report to
-`data/transaction_list_<timestamp>.txt`.
+`data/transaction_list_<timestamp>_<tag>.txt`. The timestamp resolves to one
+second, so a short random `<tag>` is appended: without it two reports written
+inside the same second silently overwrote each other.
 
 ```bash
 python3 src/utils/generate_transactions.py \
@@ -155,10 +159,11 @@ python3 src/utils/generate_transactions.py \
 | `--output-count N` | 1000 | maximum **printed** rows per case (counting is unaffected) |
 | `--d-case-digit N` | -1 | print only this case-D level (-1 = all) |
 | `--min-start-range N` | 1000 | lower bound for test-mode `z` and `k` |
-| `--seed N` | — | reproducible run; omit for `SystemRandom` |
+| `--seed N` | — | reproducible run: fixes the **keys** as well as test-mode `z` and `k`; omit for `SystemRandom` |
 | `--out-dir PATH` | `data/` | report destination |
 | `--sig-type {p2pkh,p2wpkh}` | `p2pkh` | legacy-mode sighash flavour |
 | `--demo` | off | one key-generation / signing / verification round |
+| `--tx-with-classes A B E` | — | **construct** signatures of the named classes instead of sampling (see below) |
 
 ### Report columns
 
@@ -198,6 +203,63 @@ Case D0 Count: 1749153
 `Signature Space Per Key` is `(n−1)²`: for a fixed key a signature is determined
 by the pair `(k, z)`. `Total Observed Cases` subtracts the A–D/E overlap so
 nothing is counted twice.
+
+---
+
+## `class_forge.py` — constructing class A/B/E signatures
+
+Sampling waits for a rare coincidence. `class_forge.py` goes the other way and
+**constructs** a signature that already lands in a requested class. Reached from
+the CLI with `--tx-with-classes`, which takes one or more of `A B E`
+(case-insensitive) and emits `--output-count` rows per class:
+
+```bash
+# test curve, all three classes, 5 rows each
+python3 src/utils/generate_transactions.py --tx-with-classes A B E --output-count 5
+
+# real secp256k1: A and E are constructed, B is skipped with a reason
+python3 src/utils/generate_transactions.py --tx-with-classes A E B --curve-mode legacy
+```
+
+### How it works
+
+The construction is honest ECDSA. Choosing a nonce `k` (hence `r`) and the two
+additive parts `(s_zk, s_rxk)` fixes everything else exactly:
+
+```text
+z = s_zk * k          mod n
+x = s_rxk * k * r^-1  mod n
+s = s_zk + s_rxk      mod n
+```
+
+Every emitted row is verified twice before it is returned: the private key is
+re-derived from the public `(z, r, s)` by `recover_private_keys`, and the result
+is confirmed on the curve by `verify_x_candidate`.
+
+### What cannot be steered
+
+`s_zr = s_zk * (k*r)`, and `P = k*r mod n` is fixed the moment `k` is chosen —
+`k → k*(k*G).x` is effectively a random oracle. That single fact decides which
+classes are constructible where:
+
+| class | depends on `P`? | test curve | legacy secp256k1 |
+| --- | --- | --- | --- |
+| A | weakly — only needs `P` odd | yes | yes (~2 nonces on average) |
+| B | yes — pins `s_zr : s_zk` to a fixed rational | yes (nonces enumerable) | **refused**: a 2⁻²⁵⁶ search per nonce |
+| E | no — uses only `s_zk`, `s_rxk` | yes | yes |
+
+Class B on the legacy curve raises `ClassConstructionError` with that
+explanation rather than looping forever or pretending otherwise.
+
+### Honest caveat
+
+`z` is **chosen** as `s_zk * k`, so it is not the hash of any particular
+message; `is_message_bound` is always `False`, and the report says so in its
+preamble. This is why constructing such a signature is not an attack: it
+requires already knowing `x` and `k` and being free to pick `z`. A real signer's
+`x` is secret and its `z` is a fixed message hash, so none of this transfers to
+a signature you did not create yourself. The module is a source of synthetic
+test vectors for the classifier and the recovery path — nothing more.
 
 ---
 
@@ -276,6 +338,10 @@ value each test actually measured rather than a column of "ok":
  2   |   RFC 6979 nonce matches published secp256k1 vectors    |  PASS  | 0.000s | 3/3 published vectors
 ...
  18  |   A secp256k1-scale window is rejected, not attempted   |  PASS  | 0.000s | ValueError raised before any enumeration
+     | REPRODUCIBILITY AND REPORT OUTPUT                       |        |        |
+ 19  |   An explicit rng fixes the keys, not just z and k      |  PASS  | 0.173s | 2 curves: keys+signatures replay
+ 20  |   Without an rng, keys still come from secrets          |  PASS  | 0.000s | rng_is_explicit False by default
+ 21  |   Reports in the same second get distinct filenames     |  PASS  | 0.041s | 8 writes -> 8 distinct files
 ```
 
 Independently confirmed by the suite: the test curve's group order equals `n`
@@ -339,7 +405,8 @@ in real runs (0.73 %, 0.90 % over ~1230 rows) are within noise of 0.50 %.
   signatures a verifier would accept against a message.
 * Cases C and D are not recoverable: `m1` is not a function of the public data.
 * Case B has never been observed in a real run; its quadratic is validated
-  synthetically in the test suite.
+  synthetically in the test suite. `class_forge.py` can construct one directly
+  on the test curve, where nonces are enumerable — not on secp256k1.
 * Level windows are only usable at toy scale.
 * The classification is representative-dependent by construction. `s % 2`,
   `s_zr > s` and `m1 > 1` treat elements of ℤₙ as integers, and `n` is odd, so

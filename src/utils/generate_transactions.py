@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import os
 import random
+import secrets
 import sys
 import time
 from dataclasses import dataclass
@@ -335,10 +336,17 @@ def _write_report(
     stats: Dict[str, object],
     sig_type: str,
     out_dir: str,
+    *,
+    preamble_note: Optional[str] = None,
 ) -> str:
+    # The timestamp alone resolves to one second, so two reports written inside
+    # the same second silently overwrote each other -- easy to hit when scripting
+    # runs or generating a couple of small --tx-with-classes reports back to back.
+    # A short random tag makes the name unique; the timestamp still sorts runs.
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    tag = secrets.token_hex(4)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, f"transaction_list_{timestamp}.txt")
+    path = os.path.join(out_dir, f"transaction_list_{timestamp}_{tag}.txt")
 
     widths = _column_widths(rows)
     header_line = "-" * sum(widths)
@@ -349,7 +357,9 @@ def _write_report(
             fh.write(f"{field} = {getattr(curve, field)}\n")
         fh.write("\n")
 
-        if curve.mode == "legacy":
+        if preamble_note is not None:
+            fh.write(preamble_note + "\n\n")
+        elif curve.mode == "legacy":
             kind = "BIP 143 SegWit v0" if sig_type == "p2wpkh" else "legacy P2PKH"
             fh.write(f"Using {kind} preimage for signing.\n\n")
         else:
@@ -626,6 +636,115 @@ def _collect_rows(
 
 
 # ======================================================================
+# DIRECT CLASS CONSTRUCTION  (--tx-with-classes)
+# ======================================================================
+def _import_class_forge():
+    """Lazy import of the constructor module.
+
+    ``class_forge`` imports the detectors and ``recover_private_keys`` from THIS
+    module at its top level. Importing it lazily -- only once this module has
+    finished initialising -- keeps that a one-way dependency and avoids an import
+    cycle. Both package and flat layouts are covered by the shim run at import.
+    """
+    try:
+        from utils.class_forge import (  # type: ignore[import-not-found]
+            ECDSAClassGenerator,
+            ClassConstructionError,
+        )
+    except ImportError:
+        from class_forge import (  # type: ignore[no-redef]
+            ECDSAClassGenerator,
+            ClassConstructionError,
+        )
+    return ECDSAClassGenerator, ClassConstructionError
+
+
+def _forged_row(fs) -> List[object]:
+    """Render one ``ForgedSignature`` into the 17-column report schema.
+
+    Mirrors the row layout produced by ``_collect_rows``: class E leaves the
+    ``s_zr``/``a``/``m1``/``m2`` columns blank (none are defined for it), while
+    classes A and B fill them; ``m2`` is only shown for B, exactly as a real run.
+    """
+    recovered = ", ".join(map(str, fs.recovered)) if fs.recovered else "-"
+    if fs.case.startswith("E"):
+        return [fs.case, fs.s, fs.s_zk, fs.s_rxk, "-", fs.z, fs.r_x, fs.r_y,
+                fs.x, fs.k, fs.k_inv, "-", "-", "-", "-", recovered, "-"]
+    return [fs.case, fs.s, fs.s_zk, fs.s_rxk, fs.s_zr, fs.z, fs.r_x, fs.r_y,
+            fs.x, fs.k, fs.k_inv, fs.a, fs.m1,
+            fs.m2 if fs.case == "B" else "-", "-", recovered, "-"]
+
+
+def _collect_forged_rows(
+    ec: Secp256k1, requested: Sequence[str], per_class_count: int,
+) -> Tuple[List[Sequence[object]], Dict[str, object]]:
+    """Construct ``per_class_count`` signatures for each requested class.
+
+    Unlike ``_collect_rows`` -- which signs random messages and *classifies* the
+    outcome -- this asks ``ECDSAClassGenerator`` to *construct* signatures that
+    already land in the requested class. Every returned row is an honest ECDSA
+    signature whose private key is re-derived from the public ``(z, r, s)`` by
+    ``recover_private_keys`` and then confirmed on the curve. Class B on real
+    secp256k1 is skipped with an explanatory message (it is infeasible there).
+    """
+    ECDSAClassGenerator, ClassConstructionError = _import_class_forge()
+    gen = ECDSAClassGenerator(ec)
+
+    rows: List[Sequence[object]] = []
+    counts = {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0}
+    start = time.time()
+
+    seen: set = set()
+    for raw in requested:
+        cls = raw.strip().upper()
+        if cls in seen:            # a class asked for twice is built once
+            continue
+        seen.add(cls)
+
+        made = 0
+        for _ in range(per_class_count):
+            try:
+                fs = gen.generate(cls)
+            except ClassConstructionError as exc:
+                if made == 0:
+                    print(f"[skip] class {cls}: {exc}")
+                else:
+                    print(f"[stop] class {cls}: built {made} row(s), then: {exc}")
+                break
+            rows.append(_forged_row(fs))
+            counts[fs.case[0]] += 1        # E1/E2 both count as E
+            made += 1
+        else:
+            print(f"[ok]   class {cls}: built {made} row(s).")
+
+    elapsed = time.time() - start
+    total = sum(counts.values())
+    na = "n/a (directly constructed)"
+    stats: Dict[str, object] = {
+        "total_key_count": total,
+        "transaction_limit_per_key": 1,
+        "total_transaction_count": total,
+        "signature_space_per_key": na,
+        "signature_space_all_keys": na,
+        "transactions_with_valid_a": counts["A"] + counts["B"],
+        "total_observed_cases": total,
+        "case_A_count": counts["A"],
+        "case_B_count": counts["B"],
+        "case_C_count": counts["C"],
+        "case_D_count": counts["D"],
+        "case_E_count": counts["E"],
+        "case_E_overlapping_a_cases": 0,
+        "hypothesis_001_count": 0,
+        "recovery_attempts": total,
+        "recovery_verified": total,
+        "recovery_rejected": 0,
+        "case_D_level_counts": {},
+        "spent_time_sec": elapsed,
+    }
+    return rows, stats
+
+
+# ======================================================================
 # CLI
 # ======================================================================
 def _select_curve(mode: str) -> CurveParams:
@@ -650,11 +769,21 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--min-start-range", type=int, default=100,
                    help="Lower bound for test-mode z and k")
     p.add_argument("--seed", type=int, default=None,
-                   help="Seed for reproducible test-mode runs (default: system entropy)")
+                   help="Seed for reproducible runs: fixes the keys as well as "
+                        "test-mode z and k (default: system entropy)")
     p.add_argument("--out-dir", default=None,
                    help="Directory for the report (default: <repo>/data if present, else CWD)")
     p.add_argument("--demo", action="store_true")
     p.add_argument("--sig-type", choices=["p2pkh", "p2wpkh"], default="p2pkh")
+    p.add_argument(
+        "--tx-with-classes", nargs="+", metavar="CLASS", type=str.upper,
+        choices=["A", "B", "E"], default=None,
+        help="Directly CONSTRUCT signatures of the given taxonomy classes "
+             "(one or more of A B E, case-insensitive) instead of signing "
+             "random messages and hoping a class occurs. Produces --output-count "
+             "rows per requested class. Class B is only available in test-curve "
+             "mode (it is infeasible on real secp256k1 and is skipped there).",
+    )
     return p.parse_args(argv)
 
 
@@ -674,6 +803,28 @@ def main() -> None:
 
     if args.demo:
         _print_once_demo(ec, args.sig_type)
+
+    if args.tx_with_classes:
+        requested = args.tx_with_classes
+        rows, stats = _collect_forged_rows(ec, requested, args.output_count)
+        ordered = " ".join(sorted({c.upper() for c in requested}))
+        note = (
+            f"Directly constructed signatures for taxonomy classes {ordered}. "
+            "z is CHOSEN so that each signature lands in its class -- it is not "
+            "the hash of any particular message. Every row is nonetheless an "
+            "honest ECDSA signature: it verifies against x*G, and the private key "
+            "x* is re-derived from the public (z, r, s) by the recovery routine "
+            "and confirmed on the curve. Constructing such a signature requires "
+            "already knowing x, so none of this transfers to a signature you did "
+            "not create yourself."
+        )
+        path = _write_report(
+            curve, rows, stats, args.sig_type,
+            args.out_dir or _default_out_dir(), preamble_note=note,
+        )
+        print(f"Wrote report: {path}")
+        print(f"Constructed and verified on curve: {stats['recovery_verified']} row(s).")
+        return
 
     rows, stats = _collect_rows(
         ec=ec,

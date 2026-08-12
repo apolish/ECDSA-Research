@@ -50,7 +50,7 @@ from ecurve.secp256k1 import (  # noqa: E402
 from ecurve._ripemd160 import ripemd160  # noqa: E402
 from utils.generate_transactions import (  # noqa: E402
     _detect_half_difference_split, _half_difference_parts, _guesses_case_b,
-    _check_hypothesis_001, _format_ratio, recover_private_keys,
+    _check_hypothesis_001, _format_ratio, recover_private_keys, _write_report,
 )
 from utils.find_common_private_key import (  # noqa: E402
     ECDSATransaction, exact_level, s_zk_window, window_size, find_common_x,
@@ -476,7 +476,74 @@ class TestSearch(ResearchTestCase):
         self.note("ValueError raised before any enumeration")
 
 
-SUITE: Tuple[type, ...] = (TestCurve, TestRecovery, TestFormatting, TestSearch)
+# ======================================================================
+# REPRODUCIBILITY AND REPORT OUTPUT
+# ======================================================================
+class TestReproducibility(ResearchTestCase):
+    GROUP = "Reproducibility and report output"
+    TEST_ORDER = (
+        "test_seeded_run_is_fully_reproducible",
+        "test_unseeded_keys_use_system_entropy",
+        "test_report_filenames_do_not_collide",
+    )
+
+    def test_seeded_run_is_fully_reproducible(self):
+        """An explicit rng fixes the keys, not just z and k"""
+        def run(seed, params):
+            ec = Secp256k1(params, rng=random.Random(seed))
+            keys = ec.generate_unique_keys(4, 1)
+            return keys, [ec.sign_message(d, b"regression", 1) for d in keys]
+
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            first, second = run(77, params), run(77, params)
+            # The keys are the point: before the fix they came from `secrets`
+            # and differed on every run while z and k replayed correctly.
+            self.assertEqual(first[0], second[0], "seeded keys must replay")
+            self.assertEqual(first[1], second[1], "seeded signatures must replay")
+            self.assertNotEqual(run(78, params)[0], first[0],
+                                "a different seed must give different keys")
+            # Sampling stays uniform on [1, n-1]; only the source changed.
+            self.assertTrue(all(1 <= d < params.n for d in first[0]))
+        self.note("2 curves: keys+signatures replay, seed 78 differs, range OK")
+
+    def test_unseeded_keys_use_system_entropy(self):
+        """Without an rng, keys still come from secrets rather than a seed"""
+        default = Secp256k1(TEST_PARAMS)
+        seeded = Secp256k1(TEST_PARAMS, rng=random.Random(0))
+        self.assertFalse(default.rng_is_explicit)
+        self.assertTrue(seeded.rng_is_explicit)
+        a = Secp256k1(TEST_PARAMS).generate_unique_keys(8, 1)
+        b = Secp256k1(TEST_PARAMS).generate_unique_keys(8, 1)
+        self.assertNotEqual(a, b, "unseeded runs must not be reproducible")
+        self.note("rng_is_explicit False by default; 8-key draws differ")
+
+    def test_report_filenames_do_not_collide(self):
+        """Reports written in the same second get distinct filenames"""
+        import tempfile
+        stats = {"spent_time_sec": 0.0, "case_D_level_counts": {}}
+        with tempfile.TemporaryDirectory() as tmp:
+            written = [
+                _write_report(TEST_PARAMS, [], stats, "p2pkh", tmp)
+                for _ in range(8)
+            ]
+            names = [os.path.basename(p) for p in written]
+            # The whole point of the fix: 8 writes -> 8 files, not 1.
+            self.assertEqual(len(set(names)), 8, "filenames collided")
+            self.assertEqual(len(os.listdir(tmp)), 8, "reports overwrote each other")
+            for name in names:
+                self.assertTrue(name.startswith("transaction_list_"))
+                self.assertTrue(name.endswith(".txt"))
+                stamp, tag = name[len("transaction_list_"):-4].split("_")
+                self.assertEqual(len(stamp), 14)      # YYYYMMDDHHMMSS preserved
+                self.assertTrue(stamp.isdigit())
+                self.assertEqual(len(tag), 8)         # random uniquifier
+                int(tag, 16)                          # must be hex
+        self.note("8 writes -> 8 distinct files, timestamp + 8-hex tag")
+
+
+SUITE: Tuple[type, ...] = (
+    TestCurve, TestRecovery, TestFormatting, TestSearch, TestReproducibility,
+)
 
 
 # ======================================================================
