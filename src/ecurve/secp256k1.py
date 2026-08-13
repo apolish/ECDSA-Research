@@ -340,8 +340,12 @@ def mod_sqrt_all(a: int, p: int) -> list[int]:
 
     Returns ``[]`` when ``a`` is a quadratic non-residue.  Replaces the former
     ``sympy.sqrt_mod`` dependency, which was undeclared and pulled in for this
-    single call.  Uses the p % 4 == 3 shortcut where available (the test curve)
-    and Tonelli-Shanks otherwise (secp256k1, where n % 4 == 1).
+    single call.  Uses the p % 4 == 3 shortcut when the field prime allows it
+    -- both shipped curves qualify, since secp17k1's p = 100003 and secp256k1's
+    p are each congruent to 3 mod 4 -- and Tonelli-Shanks otherwise. The
+    Tonelli-Shanks branch is therefore correct but unexercised by the shipped
+    parameters. (The earlier claim that secp256k1 took this branch confused the
+    field prime p, on which this routine operates, with the group order n.)
     """
     a %= p
     if p == 2:
@@ -673,11 +677,18 @@ class Secp256k1:
         if not (1 <= r < self._curve.n and 1 <= s < self._curve.n):
             return False
         # The original skipped public-key validation entirely and would happily
-        # "verify" against a point that is not on the curve.
+        # "verify" against a point that is not on the curve. The on-curve guard
+        # below is what stops invalid-curve attacks (see test_G / TestPackage).
         if public_key is None or not self.is_on_curve(public_key):
             return False
-        if self.scalar_multiply(self._curve.n, public_key) is not None:
-            return False
+        # No separate subgroup/order check: both shipped curves have prime order
+        # n with cofactor 1, so an on-curve point other than O already has order
+        # exactly n. A prior revision ran ``scalar_multiply(self._curve.n,
+        # public_key)`` here and rejected on a non-None result -- but that is
+        # dead code: scalar_multiply short-circuits to None whenever k % n == 0,
+        # and n % n is 0, so the branch could never fire and validated nothing.
+        # Reuse on a cofactor > 1 curve would need a real check, e.g.
+        # ``scalar_multiply(n - 1, Q) == inverse_point(Q, p)``.
         w = self.inverse_mod(s, self._curve.n)
         u1 = (z * w) % self._curve.n
         u2 = (r * w) % self._curve.n
