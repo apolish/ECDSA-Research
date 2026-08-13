@@ -2,12 +2,6 @@
 # -*- coding: utf-8 -*-
 """Pure-Python RIPEMD-160 fallback.
 
-FIX C12: ``hashlib.new("ripemd160")`` is unavailable on OpenSSL 3.x builds
-where RIPEMD-160 was moved into the (disabled-by-default) legacy provider.
-The original ``hash160()`` crashed with ``ValueError: unsupported hash type``
-on such systems. This module provides a dependency-free implementation used
-only when hashlib cannot supply the primitive.
-
 Reference: Dobbertin, Bosselaers, Preneel, "RIPEMD-160: A Strengthened
 Version of RIPEMD" (1996).
 """
