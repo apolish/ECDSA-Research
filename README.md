@@ -384,10 +384,10 @@ Case A and case E do recover a private key from public parameters alone, and
 the curve confirms it. How often they fire is the load-bearing question, and
 the answer is on the repository's own 10⁸-transaction run on the test curve:
 
-| case   | observed rate                      |
-|:-------|:-----------------------------------|
-| case A | 224 / 100,000,000 = 2.24·10⁻⁶      |
-| case E | 670 / 100,000,000 = 6.70·10⁻⁶ *(see below)* |
+| case   | observed rate                                 |
+|:-------|:----------------------------------------------|
+| case A | 224 / 100,000,000 = 2.24·10⁻⁶                 |
+| case E | 670 / 100,000,000 = 6.70·10⁻⁶ *(see below)*   |
 
 > ⚠️ The case-E figure above is the rate of the **earlier** detector, which
 > required `S` to be even and therefore discarded the whole `S % 4 == 1` family.
