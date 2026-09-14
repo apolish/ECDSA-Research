@@ -51,6 +51,7 @@ from ecurve._ripemd160 import ripemd160  # noqa: E402
 from utils.generate_transactions import (  # noqa: E402
     _detect_half_difference_split, _half_difference_parts, _guesses_case_b,
     _check_hypothesis_001, _format_ratio, recover_private_keys, _write_report,
+    _collect_rows, _build_report_config,
 )
 from utils.find_common_private_key import (  # noqa: E402
     ECDSATransaction, exact_level, s_zk_window, window_size, find_common_x,
@@ -197,6 +198,8 @@ class TestRecovery(ResearchTestCase):
         "test_case_a_and_e_recover_real_signatures",
         "test_case_e_covers_both_parity_branches",
         "test_hypothesis_001_matches_definition",
+        "test_case_b_roots_return_the_unordered_pair",
+        "test_recovery_counters_are_consistent",
     )
 
     def test_recover_and_verify_public_only(self):
@@ -330,9 +333,20 @@ class TestRecovery(ResearchTestCase):
         self.note(f"S%4=1 seen {seen[1]}x, S%4=2 seen {seen[2]}x, both recovered")
 
     def test_hypothesis_001_matches_definition(self):
-        """HYP-001 agrees with its algebraic definition, never divides by zero"""
+        """HYP-001 equals floor(a/w) == N - delta, and is stricter than {N, N-1}"""
+        # The previous version of this test recomputed the implementation's own
+        # expression and compared it with itself, so it could not have caught a
+        # wrong formula.  It now checks the independently derived closed form
+        # proved in the _check_hypothesis_001 docstring:
+        #
+        #     HYP-001  <=>  floor(a/w) == N - delta,
+        #     delta = 1 if ((N*t) mod w) + t >= w else 0,   t = a mod w
+        #
+        # and separately records that the weaker condition documented earlier,
+        # floor(a/w) in {N, N-1}, is implied but NOT equivalent.
         rnd = random.Random(7)
         fired = 0
+        weak_only = 0
         trials = 20_000
         for _ in range(trials):
             a = rnd.randrange(1, 10 ** 6)
@@ -344,11 +358,86 @@ class TestRecovery(ResearchTestCase):
             if not (level > 1 and s > s_zk and s_zk % 2 == 0 and w > 0):
                 self.assertEqual(result, "-")
                 continue
-            expected = level * w - ((level * a % w) - ((level + 1) * a % w)) == a
+            t = a % w
+            delta = 1 if ((level * t) % w) + t >= w else 0
+            expected = (a // w) == level - delta
             self.assertEqual(result == "HYP-001", expected)
-            fired += bool(expected)
+            weak = (a // w) in (level, level - 1)
+            if expected:
+                # the exact form must imply the weak one, never the reverse
+                self.assertTrue(weak)
+                fired += 1
+            elif weak:
+                weak_only += 1
+        self.assertGreater(
+            weak_only, 0,
+            "the weak condition floor(a/w) in {N, N-1} must be strictly weaker",
+        )
         self.note(f"{trials:,} triples, 0 deviations, fired {fired}x "
-                  f"({100 * fired / trials:.2f}%)")
+                  f"({100 * fired / trials:.2f}%), weak-only {weak_only}x")
+
+    def test_case_b_roots_return_the_unordered_pair(self):
+        """Case-B quadratic returns exactly {s_zk, s_rxk}, by Vieta"""
+        # mu + mu' = s/a, so a*mu' = s - a*mu = s_rxk.  The second root is
+        # therefore never wasted work: it is the other half of the split, and
+        # the recovery path has to try both because which is which is unknown.
+        checked = 0
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            n = params.n
+            rnd = random.Random(11)
+            for _ in range(50):
+                a = rnd.randrange(1, n)
+                m1 = rnd.randrange(2, 10_000)
+                s = rnd.randrange(1, n)
+                s_zk = (a * m1) % n
+                s_rxk = (s - s_zk) % n
+                if s_rxk == 0:
+                    continue
+                s_zr = (m1 * s_rxk - s) % n
+                guesses = set(_guesses_case_b(s, s_zr, a, n))
+                self.assertIn(s_zk, guesses)
+                self.assertIn(s_rxk, guesses)
+                self.assertLessEqual(len(guesses), 2)
+                checked += 1
+        self.note(f"{checked} quadratics, both roots are {{s_zk, s_rxk}}")
+
+    def test_recovery_counters_are_consistent(self):
+        """Per-class recovery counters sum to the reported aggregates"""
+        # The shipped 1e8 report states Recovery Attempts: 1564, which factors
+        # as 224 (A) + 2*670 (E) and therefore silently omits the two attempts
+        # of its single case-B row.  A per-class breakdown makes that visible.
+        _rows, stats = _collect_rows(
+            ec=Secp256k1(TEST_PARAMS, rng=random.Random(21)),
+            cfg=_build_report_config(TEST_PARAMS),
+            total_key_count=150,
+            private_key=0,
+            transaction_limit_per_key=400,
+            output_count=3,
+            d_case_digit=-1,
+            min_start_range=1000,
+        )
+        by_class = ("a", "b", "e")
+        self.assertEqual(
+            stats["recovery_attempts"],
+            sum(stats[f"recovery_attempts_{c}"] for c in by_class),
+        )
+        self.assertEqual(
+            stats["recovery_verified"],
+            sum(stats[f"recovery_verified_{c}"] for c in by_class),
+        )
+        self.assertEqual(
+            stats["recovery_rejected"],
+            stats["recovery_attempts"] - stats["recovery_verified"],
+        )
+        # Recovery Verified counts an A/E overlap twice; the signature count
+        # does not, so it can never exceed it.
+        self.assertLessEqual(
+            stats["recovered_signature_count"], stats["recovery_verified"]
+        )
+        self.note(f"attempts {stats['recovery_attempts']} = "
+                  f"A {stats['recovery_attempts_a']} + "
+                  f"B {stats['recovery_attempts_b']} + "
+                  f"E {stats['recovery_attempts_e']}")
 
 
 # ======================================================================

@@ -119,7 +119,7 @@ m2 = (s + s_zr) / s_rxk
 | **B** | `m1 == m2`, both integral | yes — `m1` solves `a*m1² − s*m1 + (s + s_zr) ≡ 0 (mod n)` |
 | **C** | `m1` integral, `m1 > 1` | no — `m1` is not determined by `(z, r, s)` |
 | **D** | `m1` not integral | no |
-| **E** | `s_zk + s_rxk == S` and `abs(s_zk − s_rxk) == S//2 + 1`, where `S ∈ {s, s+n}` and `S % 4 == 2` | yes — both parts follow from `S` |
+| **E** | `s_zk + s_rxk == S` and `abs(s_zk − s_rxk) == S//2 + 1`, where `S ∈ {s, s+n}` and `S % 4 in {1, 2}` | yes — both parts follow from `S` |
 
 Cases A, B and E are therefore *guesses computable from the signature alone*.
 Each guess is turned into a key candidate by
@@ -188,17 +188,24 @@ Total Transaction Count: 100000000
 Signature Space Per Key: 9.933312e+09
 Signature Space All Keys: 9.900134e+14
 Transactions With Valid A: 24985980
-Total Observed Cases: 24986477
+Total Observed Cases: 24986478
 Case A Count: 224
-Case B Count: 0
+Case B Count: 1
 Case C Count: 55964
 Case D Count: 24929792
 Case E Count: 670
 Case E Overlapping A Cases: 173
 Hypothesis 001 Count: 300744
-Recovery Attempts: 1564
-Recovery Verified: 894
+Recovery Attempts: 1566
+Recovery Verified: 896
 Recovery Rejected: 670
+Recovery Attempts A: 224
+Recovery Attempts B: 2
+Recovery Attempts E: 1340
+Recovery Verified A: 224
+Recovery Verified B: 1
+Recovery Verified E: 670
+Recovered Signature Count: 895
 Case D0 Count: 1749153
 ...
 ```
@@ -206,6 +213,22 @@ Case D0 Count: 1749153
 `Signature Space Per Key` is `(n−1)²`: for a fixed key a signature is determined
 by the pair `(k, z)`. `Total Observed Cases` subtracts the A–D/E overlap so
 nothing is counted twice.
+
+`Case E Overlapping A Cases` counts case-E signatures that also have a valid
+auxiliary `a`, i.e. that are additionally classified as one of A/B/C/D. It is
+*not* the number of signatures that are both case E and case A — despite how
+the label reads. In the archived run that number is 0.
+
+The per-class recovery lines were added because the aggregates alone are not
+auditable. The archived file `data/transaction_list_20260809003013.txt` prints
+`Recovery Attempts: 1564` and `Recovery Verified: 894`, which factor as
+`224 + 2*670` and `224 + 670` — the two attempts and one verification belonging
+to its single case-B row are missing, and nothing in that report reveals it.
+The corrected totals for the same data, shown above, are `1566` and `896`;
+re-running the classifier over those 895 rows reproduces them. Note also that
+`Recovery Verified` counts a signature twice when it is both case E and case A
+or B, while `Recovered Signature Count` does not (in this run the three classes
+are disjoint, so 224 + 1 + 670 = 895).
 
 ---
 
@@ -363,11 +386,29 @@ the answer is on the repository's own 10⁸-transaction run on the test curve:
 | case   | observed rate                      |
 |:-------|:-----------------------------------|
 | case A | 224 / 100,000,000 = 2.24·10⁻⁶      |
-| case E | 670 / 100,000,000 = 6.70·10⁻⁶      |
+| case E | 670 / 100,000,000 = 6.70·10⁻⁶ *(see below)* |
 
-**Case B** is extremely rare even for a test curve and therefore requires
-several billion generated transactions to catch at least one such case
-(1 / 6,826,438,356 = 1.46·10⁻¹⁰).
+> ⚠️ The case-E figure above is the rate of the **earlier** detector, which
+> required `S` to be even and therefore discarded the whole `S % 4 == 1` family.
+> Every one of the 670 case-E rows in `transaction_list_20260809003013.txt` has
+> `S % 4 == 2`; none has `S % 4 == 1`. That file predates the fix. The current
+> detector finds both families, so the rate is **twice** as high:
+>
+> ```text
+> current detector:  4 / (3n) = 1.34·10⁻⁵    (1338 per 10⁸ on secp17k1)
+> earlier detector:  2 / (3n) = 6.69·10⁻⁶    ( 669 per 10⁸ — matches the 670 above)
+> ```
+>
+> Both figures are exact counts, not estimates: enumerating all `(n-1)²` pairs
+> `(s_zk, s_rxk)` on the test curve gives 132,884 and 66,442 class-E hits
+> respectively, split E1:E2 = 3:1 in both cases.
+
+**Case B** is far rarer still. The archived 10⁸ run caught exactly one; a
+1.2·10⁹ Monte-Carlo of the same generator caught none, which bounds the rate at
+≲2.5·10⁻⁹ per signature; an earlier run put it at 1 / 6,826,438,356 =
+1.46·10⁻¹⁰. These three observations are not mutually consistent to better than
+an order of magnitude, so the honest statement is `Pr[B] ≲ 10⁻⁹` and no single
+figure should be quoted as measured.
 
 That is the rate of guessing `k^-1` at random. The formulas do not find `s_zk`;
 they name one value out of `n`, and occasionally it is the right one.
@@ -387,7 +428,10 @@ The case-D hypothesis reduces to a relation between the first two partial
 quotients of the continued fraction of `s_zk/a`:
 
 ```text
-floor(a / (s_zk mod a)) ∈ { N, N-1 },   N = floor(s_zk / a)
+N = floor(s_zk / a),  w = s_zk mod a,  t = a mod w
+delta = 1 if ((N*t) mod w) + t >= w else 0
+
+floor(a / w) == N - delta
 ```
 
 Evaluated on completely random, independent `(s, s_zk, a)` triples it fires at:
@@ -397,8 +441,18 @@ Evaluated on completely random, independent `(s, s_zk, a)` triples it fires at:
 | HYP-001 rate  | 0.49 % | 0.50 % | 0.50 % | 0.49 % |
 
 Scale-invariant, and matching the Gauss–Kuzmin distribution of continued-fraction
-quotients. It is a property of the ratio `s_zk/a`, not of ECDSA. Rates observed
-in real runs (0.73 %, 0.90 % over ~1230 rows) are within noise of 0.50 %.
+quotients. It is a property of the ratio `s_zk/a`, not of ECDSA.
+
+Two cautions. First, the weaker condition `floor(a/w) ∈ { N, N-1 }` — which
+earlier revisions of this file gave as the reduction — is *implied by* the
+identity but does not imply it: `delta` fixes which of the two values must
+occur. Over 3·10⁵ random triples the identity fired 380 times while the weaker
+condition held 912 times. Second, the 0.50 % null-model rate is not the rate on
+the case-D population: measured over the 24,929,792 case-D signatures of the
+archived 10⁸ run it is 300,744 / 24,929,792 = **1.21 %**, reproduced to three
+digits by a 1.2·10⁹ Monte-Carlo. The null model and the observed population are
+not conditioned the same way; the earlier claim that 0.73 % and 0.90 % over
+~1230 rows are "within noise of 0.50 %" does not survive a larger sample.
 
 ---
 
@@ -407,9 +461,15 @@ in real runs (0.73 %, 0.90 % over ~1230 rows) are within noise of 0.50 %.
 * `test`-mode `z` is not a hash of the message, so test-mode triples are not
   signatures a verifier would accept against a message.
 * Cases C and D are not recoverable: `m1` is not a function of the public data.
-* Case B has never been observed in a real run; its quadratic is validated
-  synthetically in the test suite. `class_forge.py` can construct one directly
-  on the test curve, where nonces are enumerable — not on secp256k1.
+* Case B has been observed exactly once in a sampled run — one row in
+  `transaction_list_20260809003013.txt` — and not at all in a 1.2·10⁹
+  Monte-Carlo. Its quadratic is also validated synthetically in the test suite.
+  `class_forge.py` can construct one directly on the test curve, where nonces
+  are enumerable — not on secp256k1.
+* The shipped data files under `data/` were produced by earlier revisions of
+  the classifier. Their class-E rows all satisfy `S % 4 == 2` and their
+  recovery counters exclude case B. They are kept for the record; re-generate
+  before quoting any rate from them.
 * Level windows are only usable at toy scale.
 * The classification is representative-dependent by construction. `s % 2`,
   `s_zr > s` and `m1 > 1` treat elements of ℤₙ as integers, and `n` is odd, so

@@ -340,12 +340,21 @@ def mod_sqrt_all(a: int, p: int) -> list[int]:
 
     Returns ``[]`` when ``a`` is a quadratic non-residue.  Replaces the former
     ``sympy.sqrt_mod`` dependency, which was undeclared and pulled in for this
-    single call.  Uses the p % 4 == 3 shortcut when the field prime allows it
-    -- both shipped curves qualify, since secp17k1's p = 100003 and secp256k1's
-    p are each congruent to 3 mod 4 -- and Tonelli-Shanks otherwise. The
-    Tonelli-Shanks branch is therefore correct but unexercised by the shipped
-    parameters. (The earlier claim that secp256k1 took this branch confused the
-    field prime p, on which this routine operates, with the group order n.)
+    single call.  Uses the ``p % 4 == 3`` shortcut when the modulus allows it
+    and Tonelli-Shanks otherwise.
+
+    NOTE ON THE MODULUS.  ``p`` here is whatever modulus the caller passes, not
+    necessarily a field prime.  The only caller in this repository is
+    ``_guesses_case_b``, which passes the *group order* ``n``:
+
+        secp17k1   p = 100003  (p % 4 == 3)   n = 99667  (n % 4 == 3)
+        secp256k1  p % 4 == 3                 n % 4 == 1
+
+    So both branches are live in the shipped configuration: the shortcut for
+    the test curve and Tonelli-Shanks for case-B recovery on secp256k1.  A
+    previous revision of this docstring asserted the opposite -- that the
+    routine "operates on the field prime p" and that Tonelli-Shanks was
+    unexercised.  Both statements were wrong; ``n % 4 == 1`` for secp256k1.
     """
     a %= p
     if p == 2:

@@ -113,6 +113,18 @@ STATS_ORDER: Tuple[str, ...] = (
     "recovery_attempts",
     "recovery_verified",
     "recovery_rejected",
+    # Per-class breakdown: the aggregates above must equal the sum of these.
+    # Printing them makes a silently dropped class visible instead of leaving
+    # the reader to factor 1564 = 224 + 2*670 by hand.
+    "recovery_attempts_a",
+    "recovery_attempts_b",
+    "recovery_attempts_e",
+    "recovery_verified_a",
+    "recovery_verified_b",
+    "recovery_verified_e",
+    # Signatures with at least one verified key; unlike Recovery Verified this
+    # does not count an A/E overlap twice.
+    "recovered_signature_count",
 )
 
 
@@ -287,12 +299,34 @@ def recover_private_keys(
 def _check_hypothesis_001(digit: int, s: int, s_zk: int, a: int) -> str:
     """HYP-001 for case D.
 
-    With ``N = floor(s_zk/a)`` and ``w = s_zk mod a`` the tested identity
+    With ``N = floor(s_zk/a)`` and ``w = s_zk mod a`` the tested identity is
 
-        N*w - ((N*a mod w) - ((N+1)*a mod w)) == a
+        N*w - ((N*a mod w) - ((N+1)*a mod w)) == a                        (1)
 
-    reduces to ``floor(a/w) == N - carry``, i.e. a relation between the first
-    two partial quotients of the continued fraction of ``s_zk/a``.
+    EXACT REDUCTION.  Write ``a = q*w + t`` with ``q = floor(a/w)`` and
+    ``0 <= t < w``.  Then ``N*a mod w == N*t mod w`` and
+    ``(N+1)*a mod w == ((N*t mod w) + t) - delta*w`` where
+
+        delta = 1 if ((N*t) mod w) + t >= w else 0
+
+    so the left-hand side of (1) equals ``w*(N - delta) + t``, and
+
+        (1)  <=>  floor(a/w) == N - delta                                 (2)
+
+    (2) is an identity, not an approximation: it matched (1) on 5e5 random
+    (N, a, w) triples with zero deviations.
+
+    CAUTION.  The weaker condition ``floor(a/w) in {N, N-1}`` -- which earlier
+    documentation gave as the reduction -- is implied by (1) but does NOT imply
+    it: which of the two values occurs is fixed by ``delta``.  Over 3e5 random
+    triples, (1) fired 380 times while ``floor(a/w) in {N, N-1}`` held 912
+    times.  Do not substitute the weaker form.
+
+    (2) constrains the first two partial quotients of the continued fraction of
+    ``s_zk/a``, whose law (Gauss-Kuzmin) does not depend on the size of n --
+    which is why the firing rate is scale-invariant.  Both ``s_zk`` and ``a``
+    are needed to evaluate it and ``s_zk`` is secret, so HYP-001 is a
+    statistical observation, not a recovery path.
 
     Fixes: ``digit`` was annotated ``str`` while being compared with ``> 1``;
     the unused ``s_rxk``, ``s_zr``, ``r``, ``private_key`` and ``k_inv``
@@ -501,6 +535,15 @@ def _collect_rows(
     hypothesis_001_count = 0
     recovery_attempts = 0
     recovery_verified = 0
+    # Per-class breakdown.  Without it the aggregate totals are unauditable:
+    # the shipped 1e8 report carries "Recovery Attempts: 1564", which is
+    # 224 (A) + 2*670 (E) exactly -- the two attempts contributed by its one
+    # case-B row are missing, and nothing in the report reveals that.
+    recovery_attempts_by_class = {"A": 0, "B": 0, "E": 0}
+    recovery_verified_by_class = {"A": 0, "B": 0, "E": 0}
+    # A signature that is both case E and case A has its key recovered twice
+    # and counted twice in the aggregate.  This counter does not double count.
+    recovered_signature_count = 0
     generated_tx_count = 0
 
     progress_step = max(1, len(uniq_keys) // 10)
@@ -521,17 +564,22 @@ def _collect_rows(
 
             # ---------- case E -------------------------------------
             split_detected, split_case = _detect_half_difference_split(s, s_zk, s_rxk, n)
+            e_keys: List[int] = []
             if split_detected:
                 counters["E"] += 1
-                keys, attempts = recover_private_keys(ec, split_case, s, 0, z, r_x, 0)
+                e_keys, attempts = recover_private_keys(ec, split_case, s, 0, z, r_x, 0)
                 recovery_attempts += attempts
-                recovery_verified += len(keys)
+                recovery_verified += len(e_keys)
+                recovery_attempts_by_class["E"] += attempts
+                recovery_verified_by_class["E"] += len(e_keys)
+                if e_keys:
+                    recovered_signature_count += 1
                 if printed["E"] < output_count:
                     printed["E"] += 1
                     rows.append([
                         split_case, s, s_zk, s_rxk, "-", z, r_x, r_y, current_key,
                         k, k_inv, "-", "-", "-", "-",
-                        ", ".join(map(str, keys)) if keys else "-", "-",
+                        ", ".join(map(str, e_keys)) if e_keys else "-", "-",
                     ])
 
             # ---------- cases A / B / C / D ------------------------
@@ -545,6 +593,12 @@ def _collect_rows(
 
             transactions_with_valid_a += 1
             if split_detected:
+                # NOTE: this counts case-E signatures that also have a valid
+                # auxiliary ``a`` -- i.e. that additionally fall into one of
+                # A/B/C/D -- not case-E signatures that are also case A.  The
+                # report label "Case E Overlapping A Cases" reads like the
+                # latter; it is the former, and it is what ``total_observed_
+                # cases`` subtracts so nothing is counted twice.
                 case_E_overlapping_a_cases += 1
 
             m1 = Fraction(s_zk, a)
@@ -570,6 +624,12 @@ def _collect_rows(
                 keys, attempts = recover_private_keys(ec, case, s, s_zr, z, r_x, a)
                 recovery_attempts += attempts
                 recovery_verified += len(keys)
+                recovery_attempts_by_class[case] += attempts
+                recovery_verified_by_class[case] += len(keys)
+                # ``e_keys`` already counted this signature in the case-E
+                # branch above; do not count the A/E overlap twice.
+                if keys and not e_keys:
+                    recovered_signature_count += 1
 
             if case == "D":
                 level = s_zk // a
@@ -629,6 +689,13 @@ def _collect_rows(
         "recovery_attempts": recovery_attempts,
         "recovery_verified": recovery_verified,
         "recovery_rejected": recovery_attempts - recovery_verified,
+        "recovery_attempts_a": recovery_attempts_by_class["A"],
+        "recovery_attempts_b": recovery_attempts_by_class["B"],
+        "recovery_attempts_e": recovery_attempts_by_class["E"],
+        "recovery_verified_a": recovery_verified_by_class["A"],
+        "recovery_verified_b": recovery_verified_by_class["B"],
+        "recovery_verified_e": recovery_verified_by_class["E"],
+        "recovered_signature_count": recovered_signature_count,
         "case_D_level_counts": case_D_level_counts,
         "spent_time_sec": elapsed,
     }
