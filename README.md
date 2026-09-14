@@ -39,7 +39,8 @@ ECDSA-Research/
 │   └── transaction_list_20260812223812.txt       # legacy curve (50   tx; A,_,_,_,E cases)
 ├── docs/
 │   ├── null_model_experiment.py                  # attachment for 'ECDSA_coincidence_classes.pdf' paper
-│   └── ECDSA_coincidence_classes.pdf             # published paper
+│   ├── ECDSA_coincidence_classes.pdf             # published paper
+│   └── ECDSA_coincidence_classes_internal.pdf    # internal mathematical description of ECDSA coincidence classes
 ├── src/
 │   ├── ecurve/
 │   │   ├── secp256k1.py                          # curve arithmetic, RFC 6979, sighash preimages,
