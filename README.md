@@ -486,7 +486,6 @@ Earlier write-ups of classes A and B. **Superseded by the assessment above: thei
 "vulnerability" framing is no longer endorsed by the author.** Kept for the record.
 
 ```text
-https://doi.org/10.6084/m9.figshare.29223701
 https://doi.org/10.21203/rs.3.rs-6790872/v1
 ```
 
