@@ -6,6 +6,13 @@ scalar on a small test curve and on real secp256k1.
 > ⚠️ **NOTICE:** This is **not** a vulnerability disclosure. It describes no attack, no
 > partial attack, and no weakening of any deployed parameter set. It does not threaten
 > secp256k1 or any system that uses it, and it does not claim to.
+>
+> 🚧 **STATUS — work in progress (27 September 2026).** The paper linked under
+> [Current publications](#current-publications) (v2, August 2026) is a preliminary report.
+> Issues found after its publication, and their corrections, are listed in
+> [Known issues and corrections](#known-issues-and-corrections). Wherever the paper, the
+> internal description in `docs/` and that section disagree, **that section takes
+> precedence**. A final report will follow when the study is complete.
 
 Every ECDSA signature satisfies
 
@@ -45,12 +52,12 @@ ECDSA-Research/
 │   ├── ecurve/
 │   │   ├── secp256k1.py                          # curve arithmetic, RFC 6979, sighash preimages,
 │   │   └── _ripemd160.py                         # pure-Python RIPEMD-160 (OpenSSL 3.x fallback)
-│   └── utils/
-│       ├── generate_transactions.py              # signature generator + case classifier + report writer
-│       ├── class_forge.py                        # direct constructor for class A/B/E signatures
-│       └── find_common_private_key.py            # search for a key shared by several transactions
-├── tests/
-│   └── run_tests.py                              # regression suite with a tabular console report
+│   ├── utils/
+│   │   ├── generate_transactions.py              # signature generator + case classifier + report writer
+│   │   ├── class_forge.py                        # direct constructor for class A/B/E signatures
+│   │   └── find_common_private_key.py            # search for a key shared by several transactions
+│   └── tests/
+│       └── run_tests.py                          # regression suite with a tabular console report
 ├── LICENSE
 └── README.md
 ```
@@ -75,7 +82,7 @@ modular square root; that is now `mod_sqrt_all` in `secp256k1.py`.)
 ```bash
 git clone <this-repo> && cd ECDSA-Research
 
-python3 tests/run_tests.py                       # 21 checks, tabular output
+python3 src/tests/run_tests.py                   # 23 checks, tabular output
 python3 src/utils/generate_transactions.py       # test curve, 5000 keys -> data/
 python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
 ```
@@ -132,8 +139,13 @@ x = z*(s - s_zk) * (r*s_zk)^-1  (mod n)
 and then **confirmed on the curve**: recompute `k = (z + r*x) * s^-1` and check
 that `(k*G).x mod n == r`. That check also uses public data only. A candidate
 that fails it is counted under `Recovery Rejected` and never reported as a key.
+The check is not decisive on its own: it accepts every key under which the
+signature verifies, which always includes a second key besides the true one —
+see [Known issues](#known-issues-and-corrections), item 2.
 
-Cases C and D leave `s_zk` undetermined and yield nothing.
+Cases C and D have no formula of their own and yield nothing when recovery is
+run by label. A signature labelled D can still be recovered by the case-B
+formula — see [Known issues](#known-issues-and-corrections), item 3.
 
 ### Case E naming
 
@@ -162,7 +174,7 @@ python3 src/utils/generate_transactions.py \
 | `--tx-per-key N` | 1 | signatures per key |
 | `--output-count N` | 1000 | maximum **printed** rows per case (counting is unaffected) |
 | `--d-case-digit N` | -1 | print only this case-D level (-1 = all) |
-| `--min-start-range N` | 1000 | lower bound for test-mode `z` and `k` |
+| `--min-start-range N` | 100 | lower bound for test-mode `z` and `k` (the archived 10⁸ run used 100, the 5K run 1000) |
 | `--seed N` | — | reproducible run: fixes the **keys** as well as test-mode `z` and `k`; omit for `SystemRandom` |
 | `--out-dir PATH` | `data/` | report destination |
 | `--sig-type {p2pkh,p2wpkh}` | `p2pkh` | legacy-mode sighash flavour |
@@ -198,8 +210,8 @@ Case E Count: 670
 Case E Overlapping A Cases: 173
 Hypothesis 001 Count: 300744
 Recovery Attempts: 1566
-Recovery Verified: 896
-Recovery Rejected: 670
+Recovery Verified: 895
+Recovery Rejected: 671
 Recovery Attempts A: 224
 Recovery Attempts B: 2
 Recovery Attempts E: 1340
@@ -211,6 +223,11 @@ Case D0 Count: 1749153
 ...
 ```
 
+The figures are those of the archived file `data/transaction_list_20260809003013.txt`
+as it stands, which includes a class-B row appended after the run (see
+[Known issues](#known-issues-and-corrections), item 1); the recovery lines are
+recomputed with the current code.
+
 `Signature Space Per Key` is `(n−1)²`: for a fixed key a signature is determined
 by the pair `(k, z)`. `Total Observed Cases` subtracts the A–D/E overlap so
 nothing is counted twice.
@@ -221,15 +238,16 @@ auxiliary `a`, i.e. that are additionally classified as one of A/B/C/D. It is
 the label reads. In the archived run that number is 0.
 
 The per-class recovery lines were added because the aggregates alone are not
-auditable. The archived file `data/transaction_list_20260809003013.txt` prints
-`Recovery Attempts: 1564` and `Recovery Verified: 894`, which factor as
-`224 + 2*670` and `224 + 670` — the two attempts and one verification belonging
-to its single case-B row are missing, and nothing in that report reveals it.
-The corrected totals for the same data, shown above, are `1566` and `896`;
-re-running the classifier over those 895 rows reproduces them. Note also that
-`Recovery Verified` counts a signature twice when it is both case E and case A
-or B, while `Recovered Signature Count` does not (in this run the three classes
-are disjoint, so 224 + 1 + 670 = 895).
+auditable. The archived file prints `Recovery Attempts: 1564` and
+`Recovery Verified: 894`, which factor as `224 + 2*670` and `224 + 670`. Those
+totals are correct for the sampled run: its class-B row was appended to the file
+afterwards, so that row's two attempts and one verification were never counted.
+Re-running the current recovery over the 895 recoverable rows of the file gives
+the totals shown above — 1566 attempts, 895 verified, 671 rejected. (An earlier
+revision of this README gave 896 and 670, which did not match its own per-class
+lines.) Note also that `Recovery Verified` counts a signature twice when it is
+both case E and case A or B, while `Recovered Signature Count` does not; in this
+file the classes are disjoint, so 224 + 1 + 670 = 895.
 
 ---
 
@@ -277,6 +295,11 @@ classes are constructible where:
 
 Class B on the legacy curve raises `ClassConstructionError` with that
 explanation rather than looping forever or pretending otherwise.
+
+This separation concerns the class-B **label** (integral `m1 == m2`). The weaker
+event on which the case-B *recovery formula* succeeds does not involve `P` and
+can be constructed on real secp256k1 as well — see
+[Known issues](#known-issues-and-corrections), item 3.
 
 ### Honest caveat
 
@@ -348,10 +371,10 @@ refused with a clear error instead of hanging.
 ## Tests
 
 ```bash
-python3 tests/run_tests.py            # table
-python3 tests/run_tests.py -k window  # filter by Class.method substring
-python3 tests/run_tests.py -v         # full tracebacks on failure
-python3 tests/run_tests.py --no-color
+python3 src/tests/run_tests.py            # table
+python3 src/tests/run_tests.py -k window  # filter by Class.method substring
+python3 src/tests/run_tests.py -v         # full tracebacks on failure
+python3 src/tests/run_tests.py --no-color
 ```
 
 Exit status is 0 on success and 1 otherwise. The `Detail` column reports the
@@ -364,11 +387,11 @@ value each test actually measured rather than a column of "ok":
  1   |   Test curve is a real curve of prime order             |  PASS  | 0.102s | #E = n = 99667, cofactor 1, G on curve
  2   |   RFC 6979 nonce matches published secp256k1 vectors    |  PASS  | 0.000s | 3/3 published vectors
 ...
- 18  |   A secp256k1-scale window is rejected, not attempted   |  PASS  | 0.000s | ValueError raised before any enumeration
+ 20  |   A secp256k1-scale window is rejected, not attempted   |  PASS  | 0.000s | ValueError raised before any enumeration
      | REPRODUCIBILITY AND REPORT OUTPUT                       |        |        |
- 19  |   An explicit rng fixes the keys, not just z and k      |  PASS  | 0.173s | 2 curves: keys+signatures replay
- 20  |   Without an rng, keys still come from secrets          |  PASS  | 0.000s | rng_is_explicit False by default
- 21  |   Reports in the same second get distinct filenames     |  PASS  | 0.041s | 8 writes -> 8 distinct files
+ 21  |   An explicit rng fixes the keys, not just z and k      |  PASS  | 0.173s | 2 curves: keys+signatures replay
+ 22  |   Without an rng, keys still come from secrets          |  PASS  | 0.000s | rng_is_explicit False by default
+ 23  |   Reports in the same second get distinct filenames     |  PASS  | 0.041s | 8 writes -> 8 distinct files
 ```
 
 Independently confirmed by the suite: the test curve's group order equals `n`
@@ -404,12 +427,19 @@ the answer is on the repository's own 10⁸-transaction run on the test curve:
 > `(s_zk, s_rxk)` on the test curve gives 132,884 and 66,442 class-E hits
 > respectively, split E1:E2 = 3:1 in both cases.
 
-**Case B** is far rarer still. The archived 10⁸ run caught exactly one; a
-1.2·10⁹ Monte-Carlo of the same generator caught none, which bounds the rate at
-≲2.5·10⁻⁹ per signature; an earlier run put it at 1 / 6,826,438,356 =
-1.46·10⁻¹⁰. These three observations are not mutually consistent to better than
-an order of magnitude, so the honest statement is `Pr[B] ≲ 10⁻⁹` and no single
-figure should be quoted as measured.
+**Case B** is far rarer still, and its rate can be computed exactly instead of
+estimated. An exhaustive enumeration of all pairs `(s, s_zr)` on secp17k1 finds
+165,421 class-B configurations, so under the uniform model
+`Pr[B] = 165,421 / (n−1)³ = 1.67·10⁻¹⁰` per signature (≈ 1.66/n²), i.e. 0.017
+expected per 10⁸ signatures. The observations agree: the archived 10⁸ run
+recorded none (the class-B row now in that file was appended afterwards — see
+[Known issues](#known-issues-and-corrections), item 1), a 1.2·10⁹ Monte-Carlo of
+the same generator caught none (0.20 expected), and an earlier run of
+6,826,438,356 signatures caught one (1.14 expected).
+
+The case-B *recovery formula* succeeds far more often than the case-B *label*:
+about as often as case A — see [Known issues](#known-issues-and-corrections),
+item 3.
 
 That is the rate of guessing `k^-1` at random. The formulas do not find `s_zk`;
 they name one value out of `n`, and occasionally it is the right one.
@@ -461,22 +491,150 @@ not conditioned the same way; the earlier claim that 0.73 % and 0.90 % over
 
 * `test`-mode `z` is not a hash of the message, so test-mode triples are not
   signatures a verifier would accept against a message.
-* Cases C and D are not recoverable: `m1` is not a function of the public data.
-* Case B has been observed exactly once in a sampled run — one row in
-  `transaction_list_20260809003013.txt` — and not at all in a 1.2·10⁹
-  Monte-Carlo. Its quadratic is also validated synthetically in the test suite.
-  `class_forge.py` can construct one directly on the test curve, where nonces
-  are enumerable — not on secp256k1.
+* Cases C and D have no recovery formula of their own: `m1` is not a function
+  of the public data. A signature labelled C or D can still be recovered by the
+  case-B formula ([Known issues](#known-issues-and-corrections), item 3).
+* Case B (the integrality label) has not been observed in the sampled 10⁸ and
+  1.2·10⁹ runs, and once in an earlier 6.8·10⁹ run — as the exact rate
+  predicts. The class-B row in `transaction_list_20260809003013.txt` was
+  constructed, not sampled ([Known issues](#known-issues-and-corrections),
+  item 1). Its quadratic is also validated synthetically in the test suite.
+  `class_forge.py` constructs the label directly only on the test curve, where
+  nonces are enumerable — not on secp256k1.
 * The shipped data files under `data/` were produced by earlier revisions of
   the classifier. Their class-E rows all satisfy `S % 4 == 2` and their
-  recovery counters exclude case B. They are kept for the record; re-generate
-  before quoting any rate from them.
+  recovery counters exclude case B; `transaction_list_20260809003013.txt` also
+  carries the appended class-B row at line 2909. They are kept for the record;
+  re-generate before quoting any rate from them.
 * Level windows are only usable at toy scale.
 * The classification is representative-dependent by construction. `s % 2`,
   `s_zr > s` and `m1 > 1` treat elements of ℤₙ as integers, and `n` is odd, so
   `s` and `s + n` are the same group element with different parity — case E
   relies on exactly this by choosing `S ∈ {s, s+n}`. Any statistic drawn from
   these tests describes the chosen integer representatives, not the group.
+
+---
+
+## Known issues and corrections
+
+*Status: work in progress, 27 September 2026.* The paper (v2, August 2026) is a
+preliminary report. The items below were found after it was published and will
+be folded into the final report. Until then this section takes precedence over
+the paper and over `docs/ECDSA_coincidence_classes_internal.pdf` wherever they
+disagree. None of the items changes the scale statement of this repository:
+every recovery is the event "the nonce equals one of at most seven public
+values", with probability of order `1/n` — about 10⁻⁷⁷ per signature on
+secp256k1.
+
+### 1. The class-B row of the archived 10⁸ report was not observed in that run
+
+Line 2909 of `data/transaction_list_20260809003013.txt` (`z = 3481`,
+`r = 33385`, `s = 1197`) was appended in commit `924f400`, together with
+`class_forge.py`. The same commit changed `Case B Count` from 0 to 1 and
+`Total Observed Cases` from 24,986,477 to 24,986,478, but left
+`Transactions With Valid A` (24,985,980) and the recovery counters unchanged, so
+the file now reports A + B + C + D = 24,985,981 signatures with a valid `a`
+against 24,985,980.
+
+The row is an honest signature that verifies against its key, and it matches
+the `class_forge.py` family `(m, q) = (5, 4)` at `a = 133`: it is a constructed
+test vector, not a sample. Earlier revisions of this README stated that the
+archived run "caught exactly one" case-B signature, and the internal description
+(§6.3, §7.2) treats the row as a genuine observation. Both are wrong: the sampled
+run recorded none, which is what the exact rate predicts — at 1.67·10⁻¹⁰ per
+signature, the chance of at least one in 10⁸ is 1.7 %.
+
+### 2. The on-curve confirmation check is not decisive
+
+`verify_x_candidate` recomputes `k = (z + r*x̂) * s^-1` and tests
+`(k*G).x mod n == r`. It accepts exactly the keys under which `(z, r, s)` is a
+valid signature, and there are always at least two of them:
+
+```text
+x̃ = -x - 2*z*r^-1   (mod n)      # its nonce is n - k
+```
+
+A third or fourth key exists only when a curve point has x-coordinate `r + n`
+(on secp17k1 that needs `r < p − n = 336`). The twin `x̃` passes the check on all
+3,898 rows of the two test-curve reports. The paper's statement (§2) that the
+check "accepts the true key and rejects everything else" is therefore incorrect,
+and the regression test labelled "verify_x_candidate is decisive" only checks
+that `x + 1` is rejected.
+
+Impact on the reported results: none. The pipeline runs a formula only for the
+class its label names, and within cases A, B and E the formulas never propose
+`−s_zk`. A public scan that tries every formula on every signature is different:
+candidates equal to `−s_zk` occur as often as candidates equal to `s_zk` (in
+2·10⁸ simulated signatures the case-A formula produced 490 twins against 498
+true keys), so about half of the keys accepted by this check alone would be
+wrong. The decisive public test is `x̂*G == Q` against the signer's public key `Q`.
+
+### 3. The constructive separation holds for the case-B label, not for the case-B formula
+
+The label B requires integrality (`m1 == m2`, both integers), which pins
+`P = k*r mod n` to a fixed rational — that part of the paper (§5) stands. But the
+case-B recovery formula (`_guesses_case_b`) succeeds on a much weaker event:
+`s_zk` is a root of `σ² − s*σ + a*(s + s_zr) ≡ 0 (mod n)` if and only if
+
+```text
+s_zk * s_rxk ≡ a * (s + s_zr)   (mod n)
+```
+
+This event
+
+* **occurs by chance as often as case A.** Exhaustive enumeration on secp17k1
+  gives 2,482,066,537 of the `(n−1)³` configurations, i.e. 2.51·10⁻⁶ ≈ `1/(4n)`
+  per signature — 15,005 times the rate of the label. In 2·10⁸ simulated
+  generator signatures it occurred 480 times; 479 of them carry the label D and
+  one the label C.
+* **is constructible on real secp256k1 without steering `P`.** Fix `k` and
+  `s_zk` (hence `s_zr = s_zk*P`). On the range where `floor(s / (s_zr − s)) = q`
+  the auxiliary value is `a = (q+1)*s − q*s_zr`, so the event becomes a quadratic
+  congruence in `s`:
+
+  ```text
+  (q+1)*s² + (s_zr − s_zk)*s + (s_zk² − q*s_zr²) ≡ 0   (mod n)
+  ```
+
+  For `q = 1, 2, …` solve it, keep a root that lies in that range, and set
+  `z = s_zk*k`, `x = (s − s_zk)*k*r^-1`. In pure Python this takes about 75 ms and
+  about five nonce trials per signature. On every signature built this way the
+  repository's own `_guesses_case_b` recovers the key and `verify_x_candidate`
+  confirms it; the classifier labels almost all of them D (20 of 20 on
+  secp256k1, 199 of 200 on secp17k1, the other one C). As with
+  `class_forge.py`, `z` is chosen, so this is a statement about what a signer can
+  do with their own key, not an attack.
+
+Consequences for the paper: the statements that class B is not signer-forgeable
+(abstract, §5, Table 5), that it "passes" the expensive-to-produce test and "is
+precisely the class that never occurs at all" (§6), and that it is "out of
+reach" (§9) hold only for the integrality label, which cannot be computed from
+public data. For the formula a scanner would actually run, case B is as cheap
+to manufacture as cases A and E; the preimage method named in §7.5 is not needed
+for this. The negative result and the defensive recommendation are not weakened
+— they now apply to all three formulas: none of them is a usable indicator of a
+weak key.
+
+### 4. Exact class-B rate
+
+Exhaustive enumeration on secp17k1 gives 165,421 class-B configurations,
+`Pr[B] = 1.67·10⁻¹⁰` per signature (≈ 1.66/n²). This replaces the estimate of
+about 5·10⁻¹⁰ in the paper (§4.3, Table 4), which lies inside the paper's own
+95 % interval.
+
+### 5. Recovery totals
+
+Re-running recovery over the 2,895 archived rows gives 1,566 attempts, 895
+verified and 671 rejected (A 224/224, B 2/1, E 1,340/670). Earlier revisions of
+this README, and the internal description (§5.10, §7.2), gave 896 verified and
+670 rejected.
+
+### 6. Generator default and documentation paths
+
+The default of `--min-start-range` is 100, not 1000 as previously documented.
+The archived 10⁸ run used 100 (its smallest `z` is 143 and smallest `k` 147);
+the 5K run used 1000. The regression suite lives in `src/tests/` and has 23
+checks; earlier revisions of this README pointed to `tests/` and quoted 21.
 
 ---
 
@@ -494,7 +652,8 @@ https://doi.org/10.21203/rs.3.rs-6790872/v1
 ## Current publications
 
 Algebraic Coincidence Classes in ECDSA: Chance-Rate Occurrence and a Constructive
-Separation
+Separation (v2, August 2026 — preliminary; read together with
+[Known issues and corrections](#known-issues-and-corrections))
 
 ```text
 https://doi.org/10.6084/m9.figshare.33235473
