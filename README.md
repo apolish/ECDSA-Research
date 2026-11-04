@@ -82,7 +82,7 @@ modular square root; that is now `mod_sqrt_all` in `secp256k1.py`.)
 ```bash
 git clone <this-repo> && cd ECDSA-Research
 
-python3 src/tests/run_tests.py                   # 23 checks, tabular output
+python3 src/tests/run_tests.py                   # 25 checks, tabular output
 python3 src/utils/generate_transactions.py       # test curve, 5000 keys -> data/
 python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
 ```
@@ -175,7 +175,7 @@ python3 src/utils/generate_transactions.py \
 | `--output-count N` | 1000 | maximum **printed** rows per case (counting is unaffected) |
 | `--d-case-digit N` | -1 | print only this case-D level (-1 = all) |
 | `--min-start-range N` | 100 | lower bound for test-mode `z` and `k` (the archived 10⁸ run used 100, the 5K run 1000) |
-| `--seed N` | — | reproducible run: fixes the **keys** as well as test-mode `z` and `k`; omit for `SystemRandom` |
+| `--seed N` | — | reproducible run: fixes the **keys** and every signed message, so `z`, `k` and the report rows replay on both curves (legacy `prev_txid` included); omit for `SystemRandom` |
 | `--out-dir PATH` | `data/` | report destination |
 | `--sig-type {p2pkh,p2wpkh}` | `p2pkh` | legacy-mode sighash flavour |
 | `--demo` | off | one key-generation / signing / verification round |

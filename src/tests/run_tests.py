@@ -33,6 +33,7 @@ import unittest
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Dict, List, Optional, Sequence, Tuple
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in (
@@ -46,12 +47,13 @@ for _p in (
 from ecurve.secp256k1 import (  # noqa: E402
     Secp256k1, TEST_PARAMS, LEGACY_PARAMS,
     mod_sqrt_all, recover_x_from_s_zk, compress_public_key,
+    make_bitcoin_legacy_sighash_message, make_bitcoin_segwit_sighash_message,
 )
 from ecurve._ripemd160 import ripemd160  # noqa: E402
 from utils.generate_transactions import (  # noqa: E402
     _detect_half_difference_split, _half_difference_parts, _guesses_case_b,
     _check_hypothesis_001, _format_ratio, recover_private_keys, _write_report,
-    _collect_rows, _build_report_config,
+    _collect_rows, _build_report_config, _build_message,
 )
 from utils.find_common_private_key import (  # noqa: E402
     ECDSATransaction, exact_level, s_zk_window, window_size, find_common_x,
@@ -572,6 +574,7 @@ class TestReproducibility(ResearchTestCase):
     GROUP = "Reproducibility and report output"
     TEST_ORDER = (
         "test_seeded_run_is_fully_reproducible",
+        "test_seeded_legacy_messages_replay",
         "test_unseeded_keys_use_system_entropy",
         "test_report_filenames_do_not_collide",
     )
@@ -594,6 +597,27 @@ class TestReproducibility(ResearchTestCase):
             # Sampling stays uniform on [1, n-1]; only the source changed.
             self.assertTrue(all(1 <= d < params.n for d in first[0]))
         self.note("2 curves: keys+signatures replay, seed 78 differs, range OK")
+
+    def test_seeded_legacy_messages_replay(self):
+        """A seeded legacy run replays its messages, not only its keys"""
+        # prev_txid came from os.urandom, outside the rng: the keys replayed,
+        # but every legacy preimage -- hence every z -- changed between runs.
+        def run(seed, sig_type):
+            ec = Secp256k1(LEGACY_PARAMS, rng=random.Random(seed))
+            d = ec.generate_unique_keys(1, 100)[0]
+            _, pub = ec.generate_keypair(d)
+            msgs = [_build_message(ec, pub, sig_type) for _ in range(3)]
+            return msgs, [ec.sign_message(d, m, 100)[:4] for m in msgs]
+
+        for sig_type in ("p2pkh", "p2wpkh"):
+            first = run(91, sig_type)
+            self.assertEqual(run(91, sig_type), first,
+                             f"{sig_type}: a seeded run must replay its messages")
+            self.assertNotEqual(run(92, sig_type)[0], first[0],
+                                f"{sig_type}: a different seed must differ")
+            self.assertEqual(len(set(first[0])), 3,
+                             f"{sig_type}: messages within a run must differ")
+        self.note("p2pkh+p2wpkh: preimages and (z, r, s) replay; seed 92 differs")
 
     def test_unseeded_keys_use_system_entropy(self):
         """Without an rng, keys still come from secrets rather than a seed"""
@@ -630,8 +654,69 @@ class TestReproducibility(ResearchTestCase):
         self.note("8 writes -> 8 distinct files, timestamp + 8-hex tag")
 
 
+# ======================================================================
+# LEGACY TRANSACTION PREIMAGES
+# ======================================================================
+class _ExtremeDraws(random.Random):
+    """An rng whose ``randint`` returns one end of the requested range.
+
+    Bit i of ``mask`` selects the upper bound for the i-th call.  Running every
+    mask drives each draw to both extremes in every combination, so the test
+    does not need to know which draw is the input amount and which the fee.
+    """
+
+    def __init__(self, mask: int) -> None:
+        super().__init__(0)
+        self.mask = mask
+        self.calls = 0
+
+    def randint(self, a: int, b: int) -> int:
+        bit = (self.mask >> self.calls) & 1
+        self.calls += 1
+        return b if bit else a
+
+
+class TestLegacyPreimages(ResearchTestCase):
+    GROUP = "Legacy transaction preimages"
+    TEST_ORDER = (
+        "test_amounts_never_go_negative",
+    )
+
+    def test_amounts_never_go_negative(self):
+        """Synthetic amounts never produce a negative or dust output"""
+        # The fee used to be drawn independently of the input, so fee > input
+        # was possible whenever input < 50_000 sat: output_value_sats went
+        # negative and int.to_bytes raised OverflowError (~1 tx in 612k).
+        draws = 3  # prev_index, input amount, fee
+        builders = {
+            "p2pkh": make_bitcoin_legacy_sighash_message,
+            "p2wpkh": make_bitcoin_segwit_sighash_message,
+        }
+        outputs = []
+        for sig_type, builder in builders.items():
+            target = f"utils.generate_transactions.{builder.__name__}"
+            for mask in range(1 << draws):
+                rng = _ExtremeDraws(mask)
+                with mock.patch(target, wraps=builder) as spy:
+                    _build_message(Secp256k1(LEGACY_PARAMS, rng=rng),
+                                   LEGACY_PARAMS.g, sig_type)
+                # An extra draw would leave combinations untested: fail loudly.
+                self.assertEqual(rng.calls, draws, "update `draws` to match _build_message")
+                output = spy.call_args.args[-1]
+                self.assertGreaterEqual(output, 546, f"{sig_type} mask {mask:03b}")
+                if sig_type == "p2wpkh":  # only BIP 143 takes the input amount
+                    fee = spy.call_args.args[-2] - output
+                    self.assertTrue(1_000 <= fee <= 50_000, f"fee {fee} out of range")
+                outputs.append(output)
+        # The worst corner (smallest input, largest fee) must actually be hit.
+        self.assertEqual(min(outputs), 546)
+        self.note(f"2 sig types x {1 << draws} corner draws, min output "
+                  f"{min(outputs)} sat")
+
+
 SUITE: Tuple[type, ...] = (
     TestCurve, TestRecovery, TestFormatting, TestSearch, TestReproducibility,
+    TestLegacyPreimages,
 )
 
 

@@ -449,7 +449,7 @@ def _print_once_demo(ec: Secp256k1, sig_type: str = "p2pkh") -> None:
 
     t0 = time.time()
     if ec.curve.mode == "legacy":
-        prev_txid = os.urandom(32)
+        prev_txid = ec.rng.randbytes(32)  # from the rng, so --seed covers --demo
         if sig_type == "p2wpkh":
             message = make_bitcoin_segwit_sighash_message(public_key, prev_txid)
             print("Using BIP 143 SegWit v0 preimage for signing.")
@@ -485,10 +485,19 @@ def _build_message(
     if curve.mode != "legacy":
         return str(ec.rng.randrange(1, curve.n - 1)).encode()
 
-    prev_txid = os.urandom(32)
+    # prev_txid comes from the run's rng like every other draw.  It used to be
+    # os.urandom(32), which bypassed --seed: a seeded legacy run replayed its
+    # keys but not a single z.  Unseeded runs are unchanged, because their rng
+    # is SystemRandom and SystemRandom.randbytes is os.urandom.
+    prev_txid = ec.rng.randbytes(32)
     prev_index = ec.rng.randint(0, 3)
     input_value_sats = ec.rng.randint(10_000, 100_0000_0000)
-    fee_sats = ec.rng.randint(1_000, 50_000)
+    # Cap the fee so the output stays at or above 546 sat, the P2PKH dust
+    # threshold.  The fee used to be drawn independently of the input, so any
+    # input under 50_000 sat could get a larger fee: the output went negative
+    # and int.to_bytes raised OverflowError in the preimage builder (about one
+    # transaction in 612k, which is why short legacy runs rarely showed it).
+    fee_sats = ec.rng.randint(1_000, min(50_000, input_value_sats - 546))
     output_value_sats = input_value_sats - fee_sats
 
     if sig_type == "p2wpkh":
@@ -836,8 +845,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--min-start-range", type=int, default=100,
                    help="Lower bound for test-mode z and k")
     p.add_argument("--seed", type=int, default=None,
-                   help="Seed for reproducible runs: fixes the keys as well as "
-                        "test-mode z and k (default: system entropy)")
+                   help="Seed for reproducible runs: fixes the keys and every "
+                        "signed message, so z, k and the report rows replay on "
+                        "both curves (default: system entropy)")
     p.add_argument("--out-dir", default=None,
                    help="Directory for the report (default: <repo>/data if present, else CWD)")
     p.add_argument("--demo", action="store_true")
