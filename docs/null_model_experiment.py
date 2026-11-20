@@ -7,7 +7,7 @@ sys.path.insert(0, "../src")
 sys.path.insert(0, "../src/utils")
 
 from ecurve.secp256k1 import Secp256k1, TEST_PARAMS, LEGACY_PARAMS
-from utils.class_forge import ECDSAClassGenerator
+from utils.generate_found_classes import ECDSAClassGenerator
 
 N = TEST_PARAMS.n
 TOTAL = 100_000_000

@@ -717,18 +717,18 @@ def _collect_rows(
 def _import_class_forge():
     """Lazy import of the constructor module.
 
-    ``class_forge`` imports the detectors and ``recover_private_keys`` from THIS
-    module at its top level. Importing it lazily -- only once this module has
-    finished initialising -- keeps that a one-way dependency and avoids an import
+    ``generate_found_classes`` imports the detectors and ``recover_private_keys`` 
+    from THIS module at its top level. Importing it lazily -- only once this module 
+    has finished initialising -- keeps that a one-way dependency and avoids an import
     cycle. Both package and flat layouts are covered by the shim run at import.
     """
     try:
-        from utils.class_forge import (  # type: ignore[import-not-found]
+        from utils.generate_found_classes import (  # type: ignore[import-not-found]
             ECDSAClassGenerator,
             ClassConstructionError,
         )
     except ImportError:
-        from class_forge import (  # type: ignore[no-redef]
+        from utils.generate_found_classes import (  # type: ignore[no-redef]
             ECDSAClassGenerator,
             ClassConstructionError,
         )

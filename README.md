@@ -39,25 +39,24 @@ the private key and proves the recovery on the curve.
 
 ```text
 ECDSA-Research/
-├── data/                                         # generated reports (created on first run)
-│   ├── transaction_list_20260808232542.txt       # test curve   (5K   tx; _,_,C,D,_ cases)
-│   ├── transaction_list_20260808233004.txt       # legacy curve (5K   tx; _,_,_,D,_ cases)
-│   ├── transaction_list_20260809003013.txt       # test curve   (100M tx; A,B,C,D,E cases)
-│   └── transaction_list_20260812223812.txt       # legacy curve (50   tx; A,_,_,_,E cases)
+├── data/                                              # generated reports (created on first run)
+│   ├── transaction_list_20261120185543_337c7bed.txt   # test curve   (10M  tx; A,B,C,D,E cases)
+│   ├── transaction_list_20261120193557_d7870627.txt   # legacy curve (100K tx; _,_,_,D,_ cases)
+│   ├── transaction_list_20261120184237_b1f94431.txt   # test curve   (3K   tx; A,B,_,_,E cases (directly constructed))
+│   └── transaction_list_20261120184737_1d697627.txt   # legacy curve (2K   tx; A,_,_,_,E cases (directly constructed))
 ├── docs/
-│   ├── null_model_experiment.py                  # attachment for 'ECDSA_coincidence_classes.pdf' paper
-│   ├── ECDSA_coincidence_classes.pdf             # published paper
-│   └── ECDSA_coincidence_classes_internal.pdf    # internal mathematical description of ECDSA coincidence classes
+│   ├── null_model_experiment.py                       # attachment for 'ECDSA_coincidence_classes.pdf' paper
+│   └── ECDSA_coincidence_classes.pdf                  # published paper
 ├── src/
 │   ├── ecurve/
-│   │   ├── secp256k1.py                          # curve arithmetic, RFC 6979, sighash preimages,
-│   │   └── _ripemd160.py                         # pure-Python RIPEMD-160 (OpenSSL 3.x fallback)
+│   │   ├── secp256k1.py                               # curve arithmetic, RFC 6979, sighash preimages,
+│   │   └── _ripemd160.py                              # pure-Python RIPEMD-160 (OpenSSL 3.x fallback)
 │   ├── utils/
-│   │   ├── generate_transactions.py              # signature generator + case classifier + report writer
-│   │   ├── class_forge.py                        # direct constructor for class A/B/E signatures
-│   │   └── find_common_private_key.py            # search for a key shared by several transactions
+│   │   ├── generate_transactions.py                   # signature generator + case classifier + report writer
+│   │   ├── generate_found_classes.py                  # direct constructor for class A/B/E signatures
+│   │   └── find_common_private_key.py                 # search for a key shared by several transactions
 │   └── tests/
-│       └── run_tests.py                          # regression suite with a tabular console report
+│       └── run_tests.py                               # regression suite with a tabular console report
 ├── LICENSE
 └── README.md
 ```
@@ -251,9 +250,9 @@ file the classes are disjoint, so 224 + 1 + 670 = 895.
 
 ---
 
-## `class_forge.py` — constructing class A/B/E signatures
+## `generate_found_classes.py` — constructing class A/B/E signatures
 
-Sampling waits for a rare coincidence. `class_forge.py` goes the other way and
+Sampling waits for a rare coincidence. `generate_found_classes.py` goes the other way and
 **constructs** a signature that already lands in a requested class. Reached from
 the CLI with `--tx-with-classes`, which takes one or more of `A B E`
 (case-insensitive) and emits `--output-count` rows per class:
@@ -499,8 +498,8 @@ not conditioned the same way; the earlier claim that 0.73 % and 0.90 % over
   predicts. The class-B row in `transaction_list_20260809003013.txt` was
   constructed, not sampled ([Known issues](#known-issues-and-corrections),
   item 1). Its quadratic is also validated synthetically in the test suite.
-  `class_forge.py` constructs the label directly only on the test curve, where
-  nonces are enumerable — not on secp256k1.
+  `generate_found_classes.py` constructs the label directly only on the test curve,
+  where nonces are enumerable — not on secp256k1.
 * The shipped data files under `data/` were produced by earlier revisions of
   the classifier. Their class-E rows all satisfy `S % 4 == 2` and their
   recovery counters exclude case B; `transaction_list_20260809003013.txt` also
@@ -530,16 +529,16 @@ secp256k1.
 
 Line 2909 of `data/transaction_list_20260809003013.txt` (`z = 3481`,
 `r = 33385`, `s = 1197`) was appended in commit `924f400`, together with
-`class_forge.py`. The same commit changed `Case B Count` from 0 to 1 and
-`Total Observed Cases` from 24,986,477 to 24,986,478, but left
+`generate_found_classes.py`. The same commit changed `Case B Count` from 0 to 1
+and `Total Observed Cases` from 24,986,477 to 24,986,478, but left
 `Transactions With Valid A` (24,985,980) and the recovery counters unchanged, so
 the file now reports A + B + C + D = 24,985,981 signatures with a valid `a`
 against 24,985,980.
 
 The row is an honest signature that verifies against its key, and it matches
-the `class_forge.py` family `(m, q) = (5, 4)` at `a = 133`: it is a constructed
-test vector, not a sample. Earlier revisions of this README stated that the
-archived run "caught exactly one" case-B signature, and the internal description
+the `generate_found_classes.py` family `(m, q) = (5, 4)` at `a = 133`: it is a
+constructed test vector, not a sample. Earlier revisions of this README stated that
+the archived run "caught exactly one" case-B signature, and the internal description
 (§6.3, §7.2) treats the row as a genuine observation. Both are wrong: the sampled
 run recorded none, which is what the exact rate predicts — at 1.67·10⁻¹⁰ per
 signature, the chance of at least one in 10⁸ is 1.7 %.
@@ -602,8 +601,8 @@ This event
   repository's own `_guesses_case_b` recovers the key and `verify_x_candidate`
   confirms it; the classifier labels almost all of them D (20 of 20 on
   secp256k1, 199 of 200 on secp17k1, the other one C). As with
-  `class_forge.py`, `z` is chosen, so this is a statement about what a signer can
-  do with their own key, not an attack.
+  `generate_found_classes.py`, `z` is chosen, so this is a statement about what
+  a signer can do with their own key, not an attack.
 
 Consequences for the paper: the statements that class B is not signer-forgeable
 (abstract, §5, Table 5), that it "passes" the expensive-to-produce test and "is

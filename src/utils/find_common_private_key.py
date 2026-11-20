@@ -276,7 +276,7 @@ def demo_transactions() -> List[ECDSATransaction]:
 
     f is passed as a string so the level is computed exactly.
     """
-    #                             s       z       r       a       f
+    #    s      z      r      a       f                      s_zk
     raw = [
         (31808, 62889, 32461, 3281,  "11.25388601036269430", 36924),
         (51963, 71144, 60685, 5725,  "0.741310043668122270", 4244),
