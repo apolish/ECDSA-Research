@@ -2177,7 +2177,6 @@ E1     66846  16711  50135   -      78387  38415  80682  21464  78988  68628    
 E1     71057  53293  17764   -      50407  15409  46764  35395  78881  48232    -      -      -    -                          35395        -
 E1     56353  14088  42265   -      14258  51655  97784  30862  59838  63808    -      -      -    -                          30862        -
 E2     27751  31854  95564   -      30459  16896  96209  58937  67256  14127    -      -      -    -                          58937        -
-B      1197   665    532     1463   3481   33385  44685  78607  12295  15175    133    5      5    -                          78607        -
 -------------------------------------------------------------------------------------------------------------------------------------------------------
 case   s      s_zk*  s_rxk*  s_zr   z      r_x    r_y    x*     k*     k^{-1}*  a      m1*    m2*  f*                         x_recovered  hypothesis
 -------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2190,9 +2189,9 @@ Total Transaction Count: 10000000
 Signature Space Per Key: 9.933312e+09
 Signature Space All Keys: 9.900134e+14
 Transactions With Valid A: 2498633
-Total Observed Cases: 2498733
+Total Observed Cases: 2498732
 Case A Count: 25
-Case B Count: 1
+Case B Count: 0
 Case C Count: 5408
 Case D Count: 2493200
 Case E Count: 140
@@ -2202,10 +2201,10 @@ Recovery Attempts: 305
 Recovery Verified: 165
 Recovery Rejected: 140
 Recovery Attempts A: 25
-Recovery Attempts B: 1
+Recovery Attempts B: 0
 Recovery Attempts E: 280
 Recovery Verified A: 25
-Recovery Verified B: 1
+Recovery Verified B: 0
 Recovery Verified E: 140
 Recovered Signature Count: 165
 Case D0 Count: 175101

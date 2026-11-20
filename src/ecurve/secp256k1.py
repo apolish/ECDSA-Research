@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""PEP 8 compliant secp256k1 demo with key generation, signing, and
-verification for both test and legacy parameters.
+"""secp256k1 / secp17k1 arithmetic with key generation, signing and
+verification for both the test and the legacy parameters.
 
 POINT REPRESENTATION
 ====================
@@ -17,15 +17,27 @@ SIGNATURE TUPLE
   * ``r_x`` is ``(k*G).x mod n``  -- the ECDSA r value, reduced mod n by spec
   * ``r_y`` is ``(k*G).y mod p``  -- the RAW affine coordinate, NOT reduced
   * ``s`` is the ECDSA s value, reduced mod n by spec
-  * ``k`` is the ephemeral nonce, which is normally secret and never returned
+  * ``k`` and ``k_inv`` are the ephemeral nonce and its inverse.  A real
+    signer keeps both secret; they are returned here only so the research
+    pipeline can compute the hidden split ``s_zk`` / ``s_rxk``.
+
+"legacy" mode signs like plain RFC 6979.  It does NOT apply the low-S
+normalisation (libsecp256k1 always emits s <= n/2) or the low-R grinding
+(Bitcoin Core >= 0.17 retries until r < 2^255), so its signatures are not
+distributed like the ones Bitcoin Core produces: about half are high-S and
+half high-R.
 
 PUBLIC-ONLY HELPERS
 ===================
 ``recover_x_from_s_zk`` and ``Secp256k1.verify_x_candidate`` operate on
 ``(z, r, s)`` only.  They take a *guess* for ``s_zk = z*k^-1 mod n`` and turn
-it into a private-key candidate, then confirm or reject that candidate on the
-curve.  No secret input is consumed by either function; ``verify_x_candidate``
-is what makes a guess into a proven key rather than an unchecked one.
+it into a private-key candidate, then test that candidate on the curve.
+
+``verify_x_candidate`` is necessary, not decisive: it accepts every key under
+which ``(z, r, s)`` verifies, and there are always at least two of them -- the
+true ``x`` and its twin ``-x - 2*z*r^-1`` (nonce ``n - k``).  The decisive
+public test is ``Secp256k1.matches_public_key``: ``x*G == Q`` against the
+signer's public key, which a verifier has to know anyway.
 
 RANDOMNESS
 ==========
@@ -604,9 +616,12 @@ class Secp256k1:
         NOTE: in "test" mode z is randomised and NOT bound to the message.
         That is deliberate for the test curve but means test mode is not a
         signing oracle. Kept as-is; see README.
+
+        Test-mode z is uniform on ``[min_start_range, n-1]``.  The upper end
+        used to be ``randrange(..., n - 1)``, which can never return n-1.
         """
         if self._curve.mode == "test":
-            return self._rng.randrange(min_start_range, self._curve.n - 1)
+            return self._rng.randrange(min_start_range, self._curve.n)
         # legacy / real secp256k1: use Bitcoin-style double SHA256
         digest = hashlib.sha256(hashlib.sha256(message).digest()).digest()
         return int.from_bytes(digest, "big") % self._curve.n
@@ -623,8 +638,8 @@ class Secp256k1:
         if self._curve.mode == "legacy":
             yield from self._rfc6979_k_candidates(private_key, z)
         else:
-            while True:
-                yield self._rng.randrange(min_start_range, self._curve.n - 1)
+            while True:  # uniform on [min_start_range, n-1]
+                yield self._rng.randrange(min_start_range, self._curve.n)
 
     def sign_message(
         self,
@@ -632,12 +647,16 @@ class Secp256k1:
         message: bytes,
         min_start_range: int = 1,
     ) -> Tuple[int, int, int, int, int, int]:
-        """Create ECDSA signature for a message using private key."""
+        """Create ECDSA signature for a message using private key.
+
+        Legacy mode is plain RFC 6979: no low-S normalisation and no low-R
+        grinding (see the module docstring).
+        """
         if not 1 <= private_key < self._curve.n:
             raise ValueError(f"private key must be in [1, n-1]; got {private_key}")
-        if not 1 <= min_start_range < self._curve.n - 1:
+        if not 1 <= min_start_range < self._curve.n:
             raise ValueError(
-                f"min_start_range must be in [1, n-2]; got {min_start_range}"
+                f"min_start_range must be in [1, n-1]; got {min_start_range}"
             )
 
         z = self.hash_message(message, min_start_range)
@@ -657,14 +676,16 @@ class Secp256k1:
         raise RuntimeError("nonce candidate stream exhausted")  # unreachable
 
     def verify_x_candidate(self, x: int, z: int, r: int, s: int) -> bool:
-        """Confirm a private-key candidate using public data only.
+        """Test a private-key candidate using ``(z, r, s)`` only.
 
         For a genuine key, ``k = (z + r*x) * s^-1`` must reproduce the very r
         that was signed, i.e. ``(k*G).x mod n == r``.  Nothing secret is used.
 
-        This is the step the original pipeline was missing: candidates were
-        printed as ``d_recovered`` without ever being checked, so a guess that
-        happened to be wrong was reported exactly like one that was right.
+        NOT DECISIVE.  The test accepts every key under which ``(z, r, s)`` is
+        a valid signature, and there are always at least two: the true ``x``
+        and its twin ``-x - 2*z*r^-1`` (whose nonce is ``n - k``); a third or
+        fourth exists when a curve point has x-coordinate ``r + n``.  Use
+        ``matches_public_key`` to tell the true key from its twin.
         """
         n = self._curve.n
         if not 1 <= x < n:
@@ -679,6 +700,17 @@ class Secp256k1:
             return False
         point = self.scalar_multiply(k, self._curve.g)
         return point is not None and point[0] % n == r
+
+    def matches_public_key(self, x: int, public_key: Tuple[int, int]) -> bool:
+        """Decisive public test of a key candidate: ``x*G == Q``.
+
+        The discrete logarithm of ``Q`` is unique in ``[1, n-1]``, so this
+        accepts the true key and nothing else -- unlike ``verify_x_candidate``,
+        which also accepts the twin key.
+        """
+        if not 1 <= x < self._curve.n:
+            return False
+        return self.scalar_multiply(x, self._curve.g) == tuple(public_key)
 
     def verify_signature(self, public_key: Tuple[int, int], signature: Tuple[int, int, int, int, int, int]) -> bool:
         """Verify ECDSA signature against a given public key."""
@@ -701,10 +733,11 @@ class Secp256k1:
         w = self.inverse_mod(s, self._curve.n)
         u1 = (z * w) % self._curve.n
         u2 = (r * w) % self._curve.n
+        # u1 == 0 whenever z == 0 (mod n); u1*G is then the point at infinity,
+        # which is a legitimate summand.  The previous early return on
+        # ``p1 is None`` rejected every such valid signature.
         p1 = self.scalar_multiply(u1, self._curve.g)
         p2 = self.scalar_multiply(u2, public_key)
-        if p1 is None or p2 is None:
-            return False
         total = self.point_add(p1, p2)
         if total is None:
             return False
@@ -718,7 +751,7 @@ class Secp256k1:
         return x, (-y) % mod_p
 
     def generate_unique_keys(self, count: int, min_start_range: int) -> list[int]:
-        """Generate a list of unique random integers within a specified range."""
+        """Return ``count`` distinct private keys drawn from ``[min_start_range, n-1]``."""
         if count < 0:
             raise ValueError("count must be non-negative")
         if min_start_range < 1:

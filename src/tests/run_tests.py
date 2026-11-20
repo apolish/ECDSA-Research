@@ -5,11 +5,11 @@
 
 Run from anywhere:
 
-    python3 tests/run_tests.py                # table
-    python3 tests/run_tests.py -k window      # only tests matching a substring
-    python3 tests/run_tests.py --no-color     # plain ASCII, no escape codes
-    python3 tests/run_tests.py --failfast     # stop at the first failure
-    python3 tests/run_tests.py -v             # full tracebacks for failures
+    python3 src/tests/run_tests.py                # table
+    python3 src/tests/run_tests.py -k window      # only tests matching a substring
+    python3 src/tests/run_tests.py --no-color     # plain ASCII, no escape codes
+    python3 src/tests/run_tests.py --failfast     # stop at the first failure
+    python3 src/tests/run_tests.py -v             # full tracebacks for failures
 
 Exit status is 0 when everything passes and 1 otherwise, so the script drops
 straight into a CI step.
@@ -24,25 +24,28 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import os
 import random
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
 import unittest
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Dict, List, Optional, Sequence, Tuple
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (
-    os.path.abspath(os.path.join(_HERE, os.pardir, "src")),
-    os.path.abspath(os.path.join(_HERE, os.pardir, "src", "utils")),
-    os.path.abspath(os.path.join(_HERE, os.pardir)),
-):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+_SRC = os.path.abspath(os.path.join(_HERE, os.pardir))   # <repo>/src
+# The suite lives in <repo>/src/tests; the previous shim still assumed
+# <repo>/tests and added the non-existent <repo>/src/src and src/src/utils.
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 
 from ecurve.secp256k1 import (  # noqa: E402
     Secp256k1, TEST_PARAMS, LEGACY_PARAMS,
@@ -53,7 +56,11 @@ from ecurve._ripemd160 import ripemd160  # noqa: E402
 from utils.generate_transactions import (  # noqa: E402
     _detect_half_difference_split, _half_difference_parts, _guesses_case_b,
     _check_hypothesis_001, _format_ratio, recover_private_keys, _write_report,
-    _collect_rows, _build_report_config, _build_message,
+    _collect_rows, _build_report_config, _build_message, _collect_forged_rows,
+    build_ec, parse_args, rand_bytes,
+)
+from utils.generate_found_classes import (  # noqa: E402
+    ECDSAClassGenerator, ClassConstructionError, classify,
 )
 from utils.find_common_private_key import (  # noqa: E402
     ECDSATransaction, exact_level, s_zk_window, window_size, find_common_x,
@@ -107,7 +114,15 @@ class TestCurve(ResearchTestCase):
         ec = Secp256k1(TEST_PARAMS)
         c = TEST_PARAMS
         self.assertTrue(ec.is_on_curve(c.g))
-        self.assertIsNone(ec.scalar_multiply(c.n, c.g))
+        # n must be prime, or "order n" would not imply "order of G is n".
+        self.assertTrue(all(c.n % q for q in range(2, int(c.n ** 0.5) + 1)),
+                        "n must be prime")
+        # Order of G checked with real arithmetic.  scalar_multiply(n, G)
+        # short-circuits to None for ANY n (k % n == 0), so the former
+        # assertIsNone(scalar_multiply(n, G)) could not fail.
+        minus_g = ec.scalar_multiply(c.n - 1, c.g)
+        self.assertEqual(minus_g, (c.g[0], (-c.g[1]) % c.p))
+        self.assertIsNone(ec.point_add(minus_g, c.g))
         order = 1
         for x in range(c.p):
             rhs = (x * x * x + c.a * x + c.b) % c.p
@@ -116,7 +131,7 @@ class TestCurve(ResearchTestCase):
             elif pow(rhs, (c.p - 1) // 2, c.p) == 1:
                 order += 2
         self.assertEqual(order, c.n, "group order must equal n (cofactor 1)")
-        self.note(f"#E = n = {c.n}, cofactor 1, G on curve")
+        self.note(f"#E = n = {c.n} prime, (n-1)G = -G, G on curve")
 
     def test_rfc6979_vectors(self):
         """RFC 6979 nonce matches published secp256k1 vectors"""
@@ -179,13 +194,25 @@ class TestCurve(ResearchTestCase):
                 else:
                     self.assertEqual(roots, [])
         n = LEGACY_PARAMS.n  # n % 4 == 1 -> Tonelli-Shanks path
+        self.assertEqual(n % 4, 1)
         rnd = random.Random(4)
-        for _ in range(50):
-            base = rnd.randrange(1, n)
-            for root in mod_sqrt_all(base * base % n, n):
-                self.assertEqual(root * root % n, base * base % n)
+        residues = non_residues = 0
+        for _ in range(100):
+            value = rnd.randrange(1, n)
+            roots = mod_sqrt_all(value, n)
+            if pow(value, (n - 1) // 2, n) == 1:
+                # Must be non-empty: the former loop over the result passed
+                # vacuously when the branch returned [] for every input.
+                self.assertEqual(len(roots), 2)
+                self.assertTrue(all(root * root % n == value for root in roots))
+                residues += 1
+            else:
+                self.assertEqual(roots, [])
+                non_residues += 1
             checked += 1
-        self.note(f"{checked} residues, both p%4 branches")
+        self.assertTrue(residues and non_residues)
+        self.note(f"{checked} values; Tonelli-Shanks: {residues} QR, "
+                  f"{non_residues} non-QR")
 
 
 # ======================================================================
@@ -205,7 +232,7 @@ class TestRecovery(ResearchTestCase):
     )
 
     def test_recover_and_verify_public_only(self):
-        """recover_x_from_s_zk round-trips; verify_x_candidate is decisive"""
+        """recover_x_from_s_zk round-trips; d passes the r-check, d+1 fails"""
         checked = 0
         for params in (TEST_PARAMS, LEGACY_PARAMS):
             ec = Secp256k1(params, rng=random.Random(2))
@@ -375,8 +402,8 @@ class TestRecovery(ResearchTestCase):
             weak_only, 0,
             "the weak condition floor(a/w) in {N, N-1} must be strictly weaker",
         )
-        self.note(f"{trials:,} triples, 0 deviations, fired {fired}x "
-                  f"({100 * fired / trials:.2f}%), weak-only {weak_only}x")
+        self.note(f"{trials:,} triples: 0 deviations, fired {fired} "
+                  f"({100 * fired / trials:.2f}%), weak-only {weak_only}")
 
     def test_case_b_roots_return_the_unordered_pair(self):
         """Case-B quadratic returns exactly {s_zk, s_rxk}, by Vieta"""
@@ -417,6 +444,7 @@ class TestRecovery(ResearchTestCase):
             output_count=3,
             d_case_digit=-1,
             min_start_range=1000,
+            progress=False,     # keep generator progress out of the table
         )
         by_class = ("a", "b", "e")
         self.assertEqual(
@@ -625,10 +653,14 @@ class TestReproducibility(ResearchTestCase):
         seeded = Secp256k1(TEST_PARAMS, rng=random.Random(0))
         self.assertFalse(default.rng_is_explicit)
         self.assertTrue(seeded.rng_is_explicit)
+        # The CLI used to pass SystemRandom() explicitly, so its default run
+        # was "explicit" too and did not take keys from secrets.
+        self.assertFalse(build_ec(parse_args([])).rng_is_explicit)
+        self.assertTrue(build_ec(parse_args(["--seed", "1"])).rng_is_explicit)
         a = Secp256k1(TEST_PARAMS).generate_unique_keys(8, 1)
         b = Secp256k1(TEST_PARAMS).generate_unique_keys(8, 1)
         self.assertNotEqual(a, b, "unseeded runs must not be reproducible")
-        self.note("rng_is_explicit False by default; 8-key draws differ")
+        self.note("class and CLI default not explicit; 8-key draws differ")
 
     def test_report_filenames_do_not_collide(self):
         """Reports written in the same second get distinct filenames"""
@@ -714,9 +746,243 @@ class TestLegacyPreimages(ResearchTestCase):
                   f"{min(outputs)} sat")
 
 
+# ======================================================================
+# TESTS 26-35 -- added on 20 November 2026.  They come after the original
+# 25 so that tests 1-25 keep their numbers.
+# ======================================================================
+class TestVerification(ResearchTestCase):
+    GROUP = "Verification and public-only recovery"
+    TEST_ORDER = (
+        "test_verify_accepts_zero_message_hash",
+        "test_public_key_check_rejects_twin",
+        "test_case_e_recovery_ignores_secret_sublabel",
+    )
+
+    def test_verify_accepts_zero_message_hash(self):
+        """A valid signature with z = 0 (mod n) verifies"""
+        # u1 = z/s = 0 makes u1*G the point at infinity, a legitimate summand.
+        # verify_signature used to return False on it.
+        checked = 0
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            ec = Secp256k1(params)
+            n = params.n
+            rnd = random.Random(30)
+            for _ in range(3):
+                x = rnd.randrange(1, n)
+                k = rnd.randrange(1, n)
+                _, pub = ec.generate_keypair(x)
+                r = ec.scalar_multiply(k, params.g)[0] % n
+                s = r * x * pow(k, -1, n) % n
+                if not (r and s):
+                    continue
+                self.assertTrue(ec.verify_x_candidate(x, 0, r, s))
+                self.assertTrue(ec.verify_signature(pub, (0, r, None, s, None, None)))
+                self.assertFalse(ec.verify_signature(pub, (1, r, None, s, None, None)))
+                checked += 1
+        self.note(f"{checked} z=0 signatures accepted, z=1 variants rejected")
+
+    def test_public_key_check_rejects_twin(self):
+        """The twin key passes verify_x_candidate; only x*G == Q is decisive"""
+        # README Known issue 2: (z, r, s) also verifies under -x - 2*z/r (nonce
+        # n - k), so verify_x_candidate alone cannot certify a key.
+        checked = 0
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            ec = Secp256k1(params, rng=random.Random(31))
+            n = params.n
+            rnd = random.Random(32)
+            for _ in range(10):
+                d = rnd.randrange(1, n)
+                _, pub = ec.generate_keypair(d)
+                z, r, s, _k_inv = _signature(ec, d, rnd)
+                twin = (-d - 2 * z * pow(r, -1, n)) % n
+                if twin in (0, d):
+                    continue
+                self.assertTrue(ec.verify_x_candidate(twin, z, r, s))
+                self.assertFalse(ec.matches_public_key(twin, pub))
+                self.assertTrue(ec.matches_public_key(d, pub))
+                checked += 1
+        self.note(f"{checked} signatures: twin passes r-check, fails x*G == Q")
+
+    def test_case_e_recovery_ignores_secret_sublabel(self):
+        """Case-E recovery needs only the class, not the secret E1/E2 label"""
+        # The E1/E2 sub-label is computed from s_zk + s_rxk > s, i.e. from the
+        # secret split; recovery used to receive it and try only one S.
+        ec = Secp256k1(TEST_PARAMS, rng=random.Random(33))
+        gen = ECDSAClassGenerator(ec)
+        seen = {"E1": 0, "E2": 0}
+        for _ in range(60):
+            fs = gen.generate("E")
+            pub = ec.scalar_multiply(fs.x, TEST_PARAMS.g)
+            keys, attempts = recover_private_keys(ec, "E", fs.s, 0, fs.z, fs.r_x, 0, pub)
+            self.assertEqual(keys, [fs.x])
+            self.assertIn(attempts, (2, 4))
+            for label in ("E1", "E2"):   # the sub-label is accepted and ignored
+                self.assertEqual(
+                    recover_private_keys(ec, label, fs.s, 0, fs.z, fs.r_x, 0, pub)[0],
+                    [fs.x])
+            seen[fs.case] += 1
+        self.assertTrue(seen["E1"] and seen["E2"])
+        self.note(f"E1 x{seen['E1']}, E2 x{seen['E2']}: recovered from (z, r, s) + class")
+
+
+# ======================================================================
+# DIRECT CLASS CONSTRUCTION
+# ======================================================================
+class TestConstruction(ResearchTestCase):
+    GROUP = "Direct class construction"
+    TEST_ORDER = (
+        "test_constructed_rows_verify_and_recover",
+        "test_constructed_report_counts_are_measured",
+        "test_secp256k1_construction",
+    )
+
+    def test_constructed_rows_verify_and_recover(self):
+        """Constructed A/B/E rows verify against Q and recover exactly x"""
+        ec = Secp256k1(TEST_PARAMS, rng=random.Random(40))
+        gen = ECDSAClassGenerator(ec)
+        n = TEST_PARAMS.n
+        for cls in ("A", "B", "E"):
+            for _ in range(15):
+                fs = gen.generate(cls)
+                pub = ec.scalar_multiply(fs.x, TEST_PARAMS.g)
+                sig = (fs.z, fs.r_x, fs.r_y, fs.s, fs.k, fs.k_inv)
+                self.assertTrue(ec.verify_signature(pub, sig))
+                self.assertEqual(fs.recovered, [fs.x])
+                self.assertEqual(fs.case[0], cls)
+                self.assertEqual(classify(fs.s, fs.s_zk, fs.s_rxk, fs.s_zr, n)[0], fs.case)
+                self.assertFalse(fs.is_message_bound)
+        self.note("45 rows: ECDSA-valid, label re-derived, key == [x]")
+
+    def test_constructed_report_counts_are_measured(self):
+        """Constructed reports: constructed classes only, recovery measured"""
+        # A constructed report counts each row once, under the class it was
+        # built for -- no C/D, no HYP-001, no E/A overlap -- while the recovery
+        # lines are measured.  They used to print attempts == rows,
+        # rejected == 0 and zeros on every per-class line.
+        ec = Secp256k1(TEST_PARAMS, rng=random.Random(41))
+        with redirect_stdout(io.StringIO()):
+            rows, st, built, skipped = _collect_forged_rows(ec, ["A", "B", "E"], 12)
+        self.assertEqual(built, {"A": 12, "B": 12, "E": 12})
+        self.assertEqual(skipped, {})
+        self.assertEqual(len(rows), 36)
+        for c in "ABE":
+            self.assertEqual(st[f"case_{c}_count"], 12)
+        for key in ("case_C_count", "case_D_count", "case_E_overlapping_a_cases",
+                    "hypothesis_001_count"):
+            self.assertEqual(st[key], 0, key)
+        self.assertEqual(st["case_D_level_counts"], {})
+        self.assertEqual(st["transactions_with_valid_a"], 24)    # A + B rows
+        self.assertEqual(st["total_observed_cases"], 36)
+        for agg in ("attempts", "verified"):
+            self.assertEqual(st[f"recovery_{agg}"],
+                             sum(st[f"recovery_{agg}_{c}"] for c in "abe"))
+        self.assertEqual(st["recovery_rejected"],
+                         st["recovery_attempts"] - st["recovery_verified"])
+        self.assertEqual(st["recovery_attempts_a"], 12)          # 1 per A row
+        self.assertTrue(12 <= st["recovery_attempts_b"] <= 24)   # 1-2 per B row
+        self.assertTrue(24 <= st["recovery_attempts_e"] <= 48)   # 2-4 per E row
+        for c in "abe":
+            self.assertEqual(st[f"recovery_verified_{c}"], 12)
+        self.assertEqual(st["recovered_signature_count"], 36)
+        self.note(f"A/B/E 12 each, C=D=0; attempts {st['recovery_attempts']}, "
+                  f"rejected {st['recovery_rejected']}")
+
+    def test_secp256k1_construction(self):
+        """secp256k1: A and E are built and recovered, B is refused"""
+        ec = Secp256k1(LEGACY_PARAMS, rng=random.Random(42))
+        gen = ECDSAClassGenerator(ec)
+        for cls in ("A", "E"):
+            fs = gen.generate(cls)
+            self.assertEqual(fs.recovered, [fs.x])
+        with self.assertRaises(ClassConstructionError) as ctx:
+            gen.generate("B")
+        message = str(ctx.exception)
+        self.assertIn("not constructible on real secp256k1", message)
+        self.assertNotIn("never occurred", message)   # contradicted the README
+        self.note("A, E recovered on secp256k1; B refused with reason")
+
+
+# ======================================================================
+# COMMAND-LINE ENTRY POINTS
+# ======================================================================
+def _run(args: Sequence[str], cwd: str) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run([sys.executable, *args], cwd=cwd, capture_output=True,
+                          text=True, timeout=600)
+
+
+class TestCommandLine(ResearchTestCase):
+    GROUP = "Command-line entry points and portability"
+    TEST_ORDER = (
+        "test_flat_layout_runs_every_script",
+        "test_common_key_search_refuses_legacy",
+        "test_demo_writes_no_report",
+        "test_rand_bytes_is_randbytes_compatible",
+    )
+
+    def test_flat_layout_runs_every_script(self):
+        """All three scripts run from a flat folder, --tx-with-classes too"""
+        files = [os.path.join(_SRC, "ecurve", "secp256k1.py"),
+                 os.path.join(_SRC, "ecurve", "_ripemd160.py"),
+                 os.path.join(_SRC, "utils", "generate_transactions.py"),
+                 os.path.join(_SRC, "utils", "generate_found_classes.py"),
+                 os.path.join(_SRC, "utils", "find_common_private_key.py")]
+        with tempfile.TemporaryDirectory() as tmp:
+            for f in files:
+                shutil.copy(f, tmp)
+            runs = {
+                "construct": _run(["generate_transactions.py", "--tx-with-classes",
+                                   "A", "E", "--output-count", "2", "--seed", "1",
+                                   "--out-dir", tmp], tmp),
+                "sample": _run(["generate_transactions.py", "--keys", "3",
+                                "--seed", "1", "--out-dir", tmp], tmp),
+                "search": _run(["find_common_private_key.py"], tmp),
+            }
+            for name, proc in runs.items():
+                self.assertEqual(proc.returncode, 0, f"{name}: {proc.stderr[-300:]}")
+            self.assertIn("-> OK", runs["search"].stdout)
+            reports = [f for f in os.listdir(tmp) if f.startswith("transaction_list_")]
+            self.assertEqual(len(reports), 2)
+        self.note("3 scripts, flat folder: exit 0, 2 reports, self-check OK")
+
+    def test_common_key_search_refuses_legacy(self):
+        """find_common_private_key --curve-mode legacy exits with an error"""
+        script = os.path.join(_SRC, "utils", "find_common_private_key.py")
+        proc = _run([script, "--curve-mode", "legacy"], _SRC)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("refusing --curve-mode legacy", proc.stderr)
+        self.assertNotIn("MISMATCH", proc.stdout)
+        self.note(f"exit {proc.returncode}, refusal on stderr, no search run")
+
+    def test_demo_writes_no_report(self):
+        """--demo runs one round and writes nothing"""
+        script = os.path.join(_SRC, "utils", "generate_transactions.py")
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = _run([script, "--demo", "--out-dir", tmp], tmp)
+            self.assertEqual(proc.returncode, 0, proc.stderr[-300:])
+            self.assertIn("Signature validation: True", proc.stdout)
+            self.assertEqual(os.listdir(tmp), [])
+        self.note("signature validated, 0 files written")
+
+    def test_rand_bytes_is_randbytes_compatible(self):
+        """rand_bytes works without Random.randbytes and replays seeded runs"""
+        # Random.randbytes exists only from Python 3.9; legacy mode called it
+        # and crashed on 3.8, the documented minimum.
+        for seed in range(5):
+            got = rand_bytes(random.Random(seed), 32)
+            self.assertEqual(len(got), 32)
+            if hasattr(random.Random, "randbytes"):   # 3.9+: byte-identical
+                self.assertEqual(got, random.Random(seed).randbytes(32))
+        self.assertEqual(len(rand_bytes(random.SystemRandom(), 32)), 32)
+        self.note(f"seeded output == Random.randbytes on python "
+                  f"{sys.version_info[0]}.{sys.version_info[1]}")
+
+
 SUITE: Tuple[type, ...] = (
+    # tests 1-25, numbered as before 20 November 2026
     TestCurve, TestRecovery, TestFormatting, TestSearch, TestReproducibility,
     TestLegacyPreimages,
+    # tests 26-35
+    TestVerification, TestConstruction, TestCommandLine,
 )
 
 

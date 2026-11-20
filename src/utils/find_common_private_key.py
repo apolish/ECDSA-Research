@@ -20,18 +20,21 @@ public data only: it recomputes ``k = (z + r*x)/s`` and tests ``(k*G).x == r``.
 
 WHY THE VERIFICATION MATTERS
 ============================
-Without it the intersection is not conclusive.  For k transactions the expected
-number of coincidental survivors is roughly ``prod(|W_i|) / n^(k-1)``; at the
-window sizes in the bundled demo that quantity is close to 1, so the search
-returned the true key alongside, on average, one or two impostors and had no
-way to tell them apart.  The verification step removes them.
+Without it the intersection is not conclusive.  For T transactions the expected
+number of coincidental survivors is roughly ``prod(|W_i|) / n^(T-1)``.  For the
+bundled demo that figure is 1.016, although this particular bundle happens to
+leave no impostor; over random 4-transaction bundles of the same kind the
+unverified search returns about 3-4 impostors per bundle (heavy-tailed).  The
+verification step removes them.
 
 SCOPE
 =====
 ``N`` is derived from ``f = s_zk/a`` and is therefore an input, not something
 the search discovers.  ``--max-window`` bounds the work; on secp256k1 a single
 window is on the order of ``a`` itself, so the search is rejected rather than
-started.
+started.  The CLI ships only a secp17k1 demo bundle, so ``--curve-mode legacy``
+is refused with an error (it used to run the toy bundle modulo the secp256k1
+order and print a meaningless "No common x found ... MISMATCH" with exit 0).
 """
 
 from __future__ import annotations
@@ -172,12 +175,12 @@ class ECDSATransaction:
 # WINDOWS
 # ======================================================================
 def s_zk_window(a: int, level: int) -> range:
-    """Half-open level window ``[a*level, a*(level+1) - 1]``, size ``a``.
+    """Level window ``[a*level, a*(level+1) - 1]`` as a half-open range.
 
-    ``s_zk == a*(level+1)`` would have floor ``level+1``, so the original
-    inclusive upper bound added a value that cannot belong to this level and
-    made the window ``a+1`` wide for ``level > 0`` but ``a`` wide for
-    ``level == 0``.  Zero is still skipped: ``s_zk == 0`` implies ``z == 0``.
+    Size ``a`` for ``level > 0`` and ``a - 1`` for ``level == 0``, because zero
+    is skipped there: ``s_zk == 0`` implies ``z == 0``.  ``s_zk == a*(level+1)``
+    would have floor ``level+1``, so the original inclusive upper bound added a
+    value that cannot belong to this level.
     """
     if a < 1:
         raise ValueError("a must be >= 1")
@@ -303,8 +306,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    args = parse_args(argv)
+    if args.curve_mode != "test":
+        # The only input this CLI has is the secp17k1 demo bundle.  Running it
+        # modulo the secp256k1 order produced "No common x found ... MISMATCH"
+        # with exit status 0 instead of the refusal the README promises.
+        raise SystemExit(
+            "find_common_private_key: refusing --curve-mode legacy. The bundled "
+            "demo is a secp17k1 bundle, and on secp256k1 a level window is about "
+            "as wide as 'a' itself (~2^250 values), so no search is started."
+        )
     curve = CURVES[args.curve_mode]          # KeyError is impossible: argparse
     precision = PRECISION[args.curve_mode]   # constrains the choice.
     ec = Secp256k1(curve)

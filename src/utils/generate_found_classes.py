@@ -27,8 +27,11 @@ So if we pick a nonce ``k`` (hence ``r``) and two additive parts
     x = s_rxk * k * r^-1  mod n
     s = s_zk + s_rxk      mod n
 
-The result verifies against ``Q = x*G`` like any other signature; this is
-checked with ``Secp256k1.verify_x_candidate`` before anything is returned.
+The result verifies against ``Q = x*G`` like any other signature.  Before a
+row is returned this is checked twice, independently: ``verify_signature``
+runs standard ECDSA verification against ``Q``, and ``recover_private_keys``
+re-derives the key from the public ``(z, r, s)`` and accepts it only if
+``x*G == Q``.
 
 THE ONE THING YOU CANNOT CONTROL
 ================================
@@ -40,9 +43,10 @@ fact decides which classes are constructible on which curve:
 * **class E** -- its condition uses only ``s_zk`` and ``s_rxk``, never ``s_zr``.
   Constructible directly on *both* curves.
 * **class A** -- needs a divisor ``D`` of ``s_zr - s_zk`` with ``s_zk < D``.
-  With ``s_zk = 1`` this is ``D = 2`` whenever ``P`` is odd, which we simply read
-  off the freely chosen ``k``. Constructible on *both* curves (about two nonces
-  tried on average).
+  With ``s_zk = 1`` that is ``D = 2`` whenever ``P`` is odd; for even ``P`` an
+  odd divisor of ``P - 1`` found by trial division works just as well.
+  Constructible on *both* curves; on secp256k1 about 1.02 nonces per signature
+  (measured over 60 constructions; ``docs/readme_measurements.py``).
 * **class B** -- pins the ratio ``s_zr : s_zk`` to a specific rational (e.g.
   ``29:4``). That is a fixed target for the uncontrollable ``P``. On the toy
   curve we enumerate all ``k`` (~1e5) and pick one that hits it; on secp256k1
@@ -52,9 +56,10 @@ fact decides which classes are constructible on which curve:
 HONEST CAVEAT ABOUT z
 =====================
 To make ``s_zk`` land where we need it, ``z`` is chosen as ``s_zk * k mod n``.
-It is therefore **not** the hash of any particular message (in class A it even
-equals the nonce). ``is_message_bound`` is always ``False`` on the returned
-object. This is the same limitation the repository already documents for its
+It is therefore **not** the hash of any particular message (with ``s_zk = 1``,
+the only class-A path on secp256k1, it even equals the nonce).
+``is_message_bound`` is always ``False`` on the returned object.
+This is the same limitation the repository already documents for its
 "test" mode -- and it is exactly why constructing these signatures is not an
 attack: it requires already knowing ``x``, ``k`` and being free to choose ``z``.
 A real signer's ``x`` is secret and its ``z`` is a fixed message hash, so none
@@ -73,8 +78,8 @@ from typing import Dict, List, Optional, Tuple
 
 # ----------------------------------------------------------------------
 # IMPORT SHIM -- identical policy to generate_transactions.py so this file
-# also runs from a flat directory (secp256k1.py + this file side by side).
-# NOTE: we import the *detectors and recovery* from generate_transactions but
+# also runs from a flat directory (all modules side by side).
+# NOTE: we import the *classifier and recovery* from generate_transactions but
 # generate_transactions imports THIS module only lazily (inside its forge path),
 # so there is no import cycle.
 # ----------------------------------------------------------------------
@@ -84,18 +89,18 @@ for _candidate in (os.path.abspath(os.path.join(_HERE, os.pardir)), _HERE):
         sys.path.insert(0, _candidate)
 
 try:  # package layout: src/ecurve, src/utils
-    from ecurve.secp256k1 import Secp256k1, CurveParams  # type: ignore
+    from ecurve.secp256k1 import Secp256k1  # type: ignore
     from utils.generate_transactions import (  # type: ignore
-        _detect_half_difference_split,
         _half_difference_parts,
+        analyse_signature,
         recover_private_keys,
     )
 except ImportError:  # flat layout
     try:
-        from secp256k1 import Secp256k1, CurveParams  # type: ignore[no-redef]
+        from secp256k1 import Secp256k1  # type: ignore[no-redef]
         from generate_transactions import (  # type: ignore[no-redef]
-            _detect_half_difference_split,
             _half_difference_parts,
+            analyse_signature,
             recover_private_keys,
         )
     except ImportError as exc:  # pragma: no cover
@@ -125,9 +130,11 @@ class ForgedSignature:
     """One constructed signature plus every value the report prints.
 
     ``x`` is the private key the construction produced; ``recovered`` is what
-    the public-only recovery returns for this signature (it contains ``x`` by
-    construction -- that equality is asserted before the object is built).
-    ``is_message_bound`` is always False: ``z`` was chosen, not hashed.
+    the public-only recovery of the constructed class returns for this
+    signature (it equals ``[x]`` -- that is checked before the object is
+    built), and ``recovery_attempts`` is the number of candidates that
+    recovery tried.  ``is_message_bound`` is always False: ``z`` was chosen,
+    not hashed.
     """
 
     case: str            # "A", "B", "E1" or "E2"
@@ -141,52 +148,36 @@ class ForgedSignature:
     s_zk: int
     s_rxk: int
     s_zr: int
-    a: Optional[int]     # None for class E (no 'a' is defined there)
+    a: Optional[int]     # None for class E (the report prints no 'a' there)
     m1: Optional[Fraction]
     m2: Optional[Fraction]
     recovered: List[int]
+    recovery_attempts: int
     is_message_bound: bool = False
 
 
 # ======================================================================
-# CLASSIFIER MIRROR
+# CLASSIFIER
 # ======================================================================
-# This reproduces, verbatim, the A/B/C/D decision inlined in
-# ``generate_transactions._collect_rows`` (case E is delegated to the shared
-# detector ``_detect_half_difference_split``). It is used to LABEL a forged row
-# exactly as a real run would. A mislabel cannot corrupt output: every forged
-# signature is additionally required to recover its own key via the authoritative
-# ``recover_private_keys`` (see ``_validate``), so a wrong label just triggers a
-# retry rather than a bad row.
+# The classification is the report's own ``analyse_signature`` -- not a copy
+# of it -- so a forged row is labelled exactly as a sampled one.  The previous
+# version re-implemented the decision "verbatim" in this file.
 def classify(
     s: int, s_zk: int, s_rxk: int, s_zr: int, n: int
 ) -> Tuple[Optional[str], Optional[int], Optional[Fraction], Optional[Fraction]]:
     """Return ``(label, a, m1, m2)`` for a signature's derived scalars.
 
     ``label`` is one of ``E1``/``E2``/``A``/``B``/``C``/``D`` or ``None`` when no
-    class applies. Case E is reported when the half-difference detector fires;
-    otherwise the A/B/C/D branch runs (which needs ``s_zr > s``).
+    class applies.  Case E takes precedence here (a row gets one label); the
+    report's statistics still count an E signature in A/B/C/D as well when it
+    has a valid ``a``.
     """
-    detected, split_case = _detect_half_difference_split(s, s_zk, s_rxk, n)
-    if detected:
-        return split_case, None, None, None
-
-    if s_zr <= s:
+    an = analyse_signature(s, s_zk, s_rxk, s_zr, n)
+    if an.e_detected:
+        return an.e_label, None, None, None
+    if an.label is None:
         return None, None, None, None
-    a = s % ((s_zr - s) % n)
-    if not (0 < a != s):
-        return None, None, None, None
-
-    m1 = Fraction(s_zk, a)
-    m2 = Fraction(s + s_zr, s_rxk) if s_rxk else None
-    if m1 == 1:
-        return "A", a, m1, m2
-    if (m2 is not None and m1.denominator == 1
-            and m2.denominator == 1 and m1 == m2):
-        return "B", a, m1, m2
-    if m1.denominator == 1:
-        return "C", a, m1, m2
-    return "D", a, m1, m2
+    return an.label, an.a, an.m1, an.m2
 
 
 # ======================================================================
@@ -278,38 +269,53 @@ class ECDSAClassGenerator:
         act_s_rxk = (r_x * x * k_inv) % n
         act_s_zr = (z * r_x) % n
 
-        label, a, m1, m2 = classify(s, act_s_zk, act_s_rxk, act_s_zr, n)
-        if label is None:
-            return None
-        # Class match: E accepts E1/E2; A/B must match exactly.
-        if want == "E" and not label.startswith("E"):
-            return None
-        if want in ("A", "B") and label != want:
-            return None
+        analysis = analyse_signature(s, act_s_zk, act_s_rxk, act_s_zr, n)
+        # Class match: E accepts E1/E2; A/B must match exactly and must not be
+        # E as well (one row, one label -- as before).
+        if want == "E":
+            if not analysis.e_detected:
+                return None
+            label = analysis.e_label
+        else:
+            if analysis.e_detected or analysis.label != want:
+                return None
+            label = want
 
-        # Authoritative, public-only recovery must return this very key.
-        s_zr_for_rec = act_s_zr if want in ("A", "B") else 0
-        a_for_rec = a if a is not None else 0
-        keys, _attempts = recover_private_keys(
-            self._ec, label, s, s_zr_for_rec, z, r_x, a_for_rec
-        )
-        if x not in keys:
+        # Independent check 1: standard ECDSA verification against Q = x*G.
+        public_key = self._ec.scalar_multiply(x, self._ec.curve.g)
+        if public_key is None or not self._ec.verify_signature(
+                public_key, (z, r_x, r_y, s, k, k_inv)):
             return None
-        # Independent ECDSA sanity check on the curve.
-        if not self._ec.verify_x_candidate(x, z, r_x, s):
+        # Independent check 2: the public-only recovery of the constructed
+        # class, decided by x*G == Q, must return this very key.
+        if want == "E":
+            keys, attempts = recover_private_keys(
+                self._ec, "E", s, 0, z, r_x, 0, public_key)
+        else:
+            keys, attempts = recover_private_keys(
+                self._ec, want, s, act_s_zr, z, r_x, analysis.a or 0, public_key)
+        if keys != [x]:
             return None
 
         return ForgedSignature(
             case=label, z=z, r_x=r_x, r_y=r_y, s=s, k=k, k_inv=k_inv, x=x,
             s_zk=act_s_zk, s_rxk=act_s_rxk, s_zr=act_s_zr,
-            a=a, m1=m1, m2=m2, recovered=keys, is_message_bound=False,
+            a=None if want == "E" else analysis.a,
+            m1=None if want == "E" else analysis.m1,
+            m2=None if want == "E" else analysis.m2,
+            recovered=keys, recovery_attempts=attempts,
+            is_message_bound=False,
         )
 
     def _random_nonce_point(self) -> Tuple[int, int, int]:
-        """Draw a usable nonce and return ``(k, r_x, r_y)`` with ``r_x != 0``."""
+        """Draw a usable nonce and return ``(k, r_x, r_y)`` with ``r_x != 0``.
+
+        ``k`` is uniform on ``[1, n-1]`` (``randrange(1, n - 1)`` before, which
+        never returned n-1).
+        """
         n = self._n
         while True:
-            k = self._rng.randrange(1, n - 1)
+            k = self._rng.randrange(1, n)
             point = self._ec.scalar_multiply(k, self._ec.curve.g)
             if point is None:
                 continue
@@ -409,30 +415,34 @@ class ECDSAClassGenerator:
         )
 
     def _smallest_divisor_above(self, m: int, lo: int) -> Optional[int]:
-        """Smallest divisor ``d`` of ``m`` with ``d > lo`` (bounded search).
+        """A proper divisor ``d`` of ``m`` with ``lo < d < m`` (bounded search).
 
-        Fast path: if ``m`` is even and ``lo < 2`` return 2. Otherwise trial the
-        primes/factors up to ``min(sqrt(m), budget)`` and also consider the large
-        cofactors. Returns None if nothing suitable is found within budget.
+        Any such divisor makes ``a == s_zk``; it does not need to be the least
+        one, and for ``lo >= 2`` this is not guaranteed to be the least (only 2
+        and odd trial divisors are scanned).  For ``lo < 2`` the first divisor
+        found is the smallest prime factor, which is returned at once instead
+        of scanning on to the budget.  Returns None when nothing is found
+        within ``min(sqrt(m), budget)``.
+
+        The previous fallback returned ``m`` itself, which always produced
+        ``s == s_zk`` and hence an invalid ``a == s``: it could only cause a
+        retry, never a row.
         """
         if m <= lo:
             return None
         if lo < 2 and m % 2 == 0:
             return 2
         limit = min(self._isqrt(m), self._divisor_budget)
-        # Collect small divisors and their cofactors, pick the least one > lo.
         best: Optional[int] = None
         d = 2
         while d <= limit:
             if m % d == 0:
+                if lo < 2:
+                    return d                      # smallest prime factor
                 for cand in (d, m // d):
-                    if cand > lo and (best is None or cand < best):
+                    if lo < cand < m and (best is None or cand < best):
                         best = cand
             d += 1 if d == 2 else 2
-        # m itself is a divisor > lo when m has no factor <= limit (m prime) or
-        # simply as a fallback candidate.
-        if best is None and m > lo:
-            best = m
         return best
 
     @staticmethod
@@ -456,10 +466,9 @@ class ECDSAClassGenerator:
                 "class B is not constructible on real secp256k1: it pins the "
                 "ratio s_zr : s_zk to a fixed rational, which requires steering "
                 "P = k*r mod n onto a chosen value. The map k -> k*(k*G).x is a "
-                "random oracle here, so hitting the target is a 2**-256 search "
-                "per nonce. Class B is available only in test-curve mode, where "
-                "every nonce can be enumerated. (The repository's own README "
-                "reports class B has never occurred in a real run.)"
+                "random oracle here, so each nonce hits the target with "
+                "probability about 2**-256. Class B is available only in "
+                "test-curve mode, where every nonce can be enumerated."
             )
 
         families = self._case_b_families()

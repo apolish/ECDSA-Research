@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
-"""Extended measurements for the paper."""
+"""Extended measurements for the paper.
+
+Requires numpy (the code under src/ is standard-library only).  Runs from any
+working directory.
+
+Corrected after publication (README, Known issue 8): the "real" and "null"
+samples used the same seed, so the null sample was built from the very random
+numbers of the real one (null s_zk == real k, null s_rxk == real z, null P ==
+real x).  The two-sample Poisson z-test below assumes independent samples;
+they now come from independent child seeds of SEED.  The published figures
+were produced by the earlier version (git: aa5afa7).
+"""
 import sys, os, time, random
 import numpy as np
 
-sys.path.insert(0, "../src")
-sys.path.insert(0, "../src/utils")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, os.pardir, "src"))
 
 from ecurve.secp256k1 import Secp256k1, TEST_PARAMS, LEGACY_PARAMS
 from utils.generate_found_classes import ECDSAClassGenerator
@@ -106,9 +117,10 @@ def run(model, total, seed):
 
 
 results = {}
+seeds = dict(zip(("real", "null"), np.random.SeedSequence(SEED).spawn(2)))
 for model in ("real", "null"):
     t0 = time.time()
-    done, acc = run(model, TOTAL, SEED)
+    done, acc = run(model, TOTAL, seeds[model])
     results[model] = (done, acc)
     va, a, b, c, e = acc
     print(f"\n=== {model.upper()} ({done:,} tuples, {time.time()-t0:.0f}s) ===")

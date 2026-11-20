@@ -1,0 +1,5 @@
+# Normalise line endings: files edited on Windows otherwise show up as
+# entirely changed (CRLF), and logs redirected by PowerShell 5 arrive as
+# UTF-16, which GitHub displays as binary.
+* text=auto eol=lf
+*.pdf binary
