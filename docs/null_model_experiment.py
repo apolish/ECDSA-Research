@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Extended measurements for the paper.
+"""Real-model versus null-model measurements on the test curve.
 
 Requires numpy (the code under src/ is standard-library only).  Runs from any
 working directory.
 
-Corrected after publication (README, Known issue 8): the "real" and "null"
-samples used the same seed, so the null sample was built from the very random
-numbers of the real one (null s_zk == real k, null s_rxk == real z, null P ==
-real x).  The two-sample Poisson z-test below assumes independent samples;
-they now come from independent child seeds of SEED.  The published figures
-were produced by the earlier version (git: aa5afa7).
+The census labels every tuple exactly as the report does: at most one class
+per signature, E first, then A, B, C or D when the auxiliary a is valid, else
+unclassified.  The six counts therefore add up to the number of tuples.
+
+The two-sample Poisson z-test below assumes independent samples, so the
+"real" and the "null" sample are drawn from independent child seeds of SEED.
 """
 import sys, os, time, random
 import numpy as np
@@ -61,7 +61,11 @@ for k in range(1, N):
 print(f"\ntables built in {time.time()-t0:.1f}s", flush=True)
 
 
+CLASSES = ("case A", "case B", "case C", "case D", "case E", "unclassified")
+
+
 def census(s, s_zk, s_rxk, s_zr):
+    """Exclusive class counts (A, B, C, D, E, unclassified) of one chunk."""
     big_s = s_zk + s_rxk
     e_hit = (((big_s & 3) == 1) | ((big_s & 3) == 2))
     e_hit &= np.abs(s_zk - s_rxk) == (big_s >> 1) + 1
@@ -70,6 +74,7 @@ def census(s, s_zk, s_rxk, s_zr):
     d = np.where(va, s_zr - s, 1)
     a = np.where(va, s % d, 0)
     va &= (a > 0) & (a != s)
+    va &= ~e_hit                             # E takes precedence
 
     a_safe = np.where(va, a, 1)
     m1_int = va & (s_zk % a_safe == 0)
@@ -82,13 +87,15 @@ def census(s, s_zk, s_rxk, s_zr):
     a_hit = va & (m1 == 1) & m1_int          # s_zk == a
     b_hit = va & m1_int & m2_int & (m1 == m2) & (m1 != 1)
     c_hit = va & m1_int & (m1 > 1) & ~b_hit
-    return (int(va.sum()), int(a_hit.sum()), int(b_hit.sum()),
-            int(c_hit.sum()), int(e_hit.sum()))
+    d_hit = va & ~m1_int
+    none = ~va & ~e_hit
+    return tuple(int(h.sum()) for h in
+                 (a_hit, b_hit, c_hit, d_hit, e_hit, none))
 
 
 def run(model, total, seed):
     rng = np.random.default_rng(seed)
-    acc = np.zeros(5, dtype=np.int64)
+    acc = np.zeros(len(CLASSES), dtype=np.int64)
     done = 0
     while done < total:
         m = min(CHUNK, total - done)
@@ -122,22 +129,18 @@ for model in ("real", "null"):
     t0 = time.time()
     done, acc = run(model, TOTAL, seeds[model])
     results[model] = (done, acc)
-    va, a, b, c, e = acc
+    assert int(acc.sum()) == done, "the classes must partition the tuples"
     print(f"\n=== {model.upper()} ({done:,} tuples, {time.time()-t0:.0f}s) ===")
-    print(f"  valid a : {va:>10,}  rate {va/done:.6f}")
-    print(f"  case A  : {a:>10,}  rate {a/done:.4e}")
-    print(f"  case B  : {b:>10,}  rate {b/done:.4e}")
-    print(f"  case C  : {c:>10,}  rate {c/done:.4e}")
-    print(f"  case E  : {e:>10,}  rate {e/done:.4e}", flush=True)
+    for nm, cnt in zip(CLASSES, acc):
+        print(f"  {nm:12}: {int(cnt):>10,}  rate {cnt/done:.4e}")
 
 # two-sample Poisson comparison
 print("\n=== REAL vs NULL (two-sample Poisson z) ===")
-names = ["valid a", "case A", "case B", "case C", "case E"]
-for i, nm in enumerate(names):
+for i, nm in enumerate(CLASSES):
     x, y = int(results["real"][1][i]), int(results["null"][1][i])
     den = np.sqrt(x + y)
     z = (x - y) / den if den > 0 else 0.0
-    print(f"  {nm:8}: real {x:>10,}  null {y:>10,}  z = {z:+.2f}")
+    print(f"  {nm:12}: real {x:>10,}  null {y:>10,}  z = {z:+.2f}")
 
 # =====================================================================
 # 3. Cost of CONSTRUCTING class A / E on real secp256k1

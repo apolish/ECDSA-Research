@@ -42,8 +42,7 @@ from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SRC = os.path.abspath(os.path.join(_HERE, os.pardir))   # <repo>/src
-# The suite lives in <repo>/src/tests; the previous shim still assumed
-# <repo>/tests and added the non-existent <repo>/src/src and src/src/utils.
+# The suite lives in <repo>/src/tests; the modules are imported from <repo>/src.
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
@@ -117,9 +116,8 @@ class TestCurve(ResearchTestCase):
         # n must be prime, or "order n" would not imply "order of G is n".
         self.assertTrue(all(c.n % q for q in range(2, int(c.n ** 0.5) + 1)),
                         "n must be prime")
-        # Order of G checked with real arithmetic.  scalar_multiply(n, G)
-        # short-circuits to None for ANY n (k % n == 0), so the former
-        # assertIsNone(scalar_multiply(n, G)) could not fail.
+        # Order of G checked with real arithmetic: scalar_multiply(n, G)
+        # short-circuits to None for ANY n (k % n == 0), so it cannot fail.
         minus_g = ec.scalar_multiply(c.n - 1, c.g)
         self.assertEqual(minus_g, (c.g[0], (-c.g[1]) % c.p))
         self.assertIsNone(ec.point_add(minus_g, c.g))
@@ -176,13 +174,13 @@ class TestCurve(ResearchTestCase):
         self.note("2 curves OK, off-curve pubkey rejected")
 
     def test_compress_public_key_field_size(self):
-        """SEC encoding follows the field size instead of a hardcoded 32"""
+        """SEC encoding length follows the curve's field size"""
         self.assertEqual(len(compress_public_key((5, 4), field_bytes=3)), 4)
         self.assertEqual(len(compress_public_key((5, 4))), 33)
         self.note("3-byte field -> 4 B, 32-byte field -> 33 B")
 
     def test_mod_sqrt_all(self):
-        """Local modular square root replaces sympy on both moduli"""
+        """Modular square roots: all roots of a residue, none otherwise"""
         checked = 0
         for p in (99667, 10007):
             squares = {(i * i) % p for i in range(p)}
@@ -201,8 +199,7 @@ class TestCurve(ResearchTestCase):
             value = rnd.randrange(1, n)
             roots = mod_sqrt_all(value, n)
             if pow(value, (n - 1) // 2, n) == 1:
-                # Must be non-empty: the former loop over the result passed
-                # vacuously when the branch returned [] for every input.
+                # A residue has exactly two roots; an empty result fails here.
                 self.assertEqual(len(roots), 2)
                 self.assertTrue(all(root * root % n == value for root in roots))
                 residues += 1
@@ -363,16 +360,14 @@ class TestRecovery(ResearchTestCase):
 
     def test_hypothesis_001_matches_definition(self):
         """HYP-001 equals floor(a/w) == N - delta, and is stricter than {N, N-1}"""
-        # The previous version of this test recomputed the implementation's own
-        # expression and compared it with itself, so it could not have caught a
-        # wrong formula.  It now checks the independently derived closed form
-        # proved in the _check_hypothesis_001 docstring:
+        # Checks the independently derived closed form proved in the
+        # _check_hypothesis_001 docstring:
         #
         #     HYP-001  <=>  floor(a/w) == N - delta,
         #     delta = 1 if ((N*t) mod w) + t >= w else 0,   t = a mod w
         #
-        # and separately records that the weaker condition documented earlier,
-        # floor(a/w) in {N, N-1}, is implied but NOT equivalent.
+        # and records that the weaker condition floor(a/w) in {N, N-1} is
+        # implied but NOT equivalent.
         rnd = random.Random(7)
         fired = 0
         weak_only = 0
@@ -431,10 +426,7 @@ class TestRecovery(ResearchTestCase):
         self.note(f"{checked} quadratics, both roots are {{s_zk, s_rxk}}")
 
     def test_recovery_counters_are_consistent(self):
-        """Per-class recovery counters sum to the reported aggregates"""
-        # The shipped 1e8 report states Recovery Attempts: 1564, which factors
-        # as 224 (A) + 2*670 (E) and therefore silently omits the two attempts
-        # of its single case-B row.  A per-class breakdown makes that visible.
+        """Classes partition the run; recovery counters add up per class"""
         _rows, stats = _collect_rows(
             ec=Secp256k1(TEST_PARAMS, rng=random.Random(21)),
             cfg=_build_report_config(TEST_PARAMS),
@@ -446,6 +438,15 @@ class TestRecovery(ResearchTestCase):
             min_start_range=1000,
             progress=False,     # keep generator progress out of the table
         )
+        # Every signature has exactly one class or none.
+        observed = sum(stats[f"case_{c}_count"] for c in "ABCDE")
+        self.assertEqual(stats["total_observed_cases"], observed)
+        self.assertEqual(observed + stats["unclassified_count"],
+                         stats["total_transaction_count"])
+        self.assertEqual(sum(stats["case_D_level_counts"].values()),
+                         stats["case_D_count"])
+        self.assertGreater(stats["case_D_count"], 0)
+        self.assertGreater(stats["unclassified_count"], 0)
         by_class = ("a", "b", "e")
         self.assertEqual(
             stats["recovery_attempts"],
@@ -459,15 +460,15 @@ class TestRecovery(ResearchTestCase):
             stats["recovery_rejected"],
             stats["recovery_attempts"] - stats["recovery_verified"],
         )
-        # Recovery Verified counts an A/E overlap twice; the signature count
-        # does not, so it can never exceed it.
-        self.assertLessEqual(
-            stats["recovered_signature_count"], stats["recovery_verified"]
-        )
-        self.note(f"attempts {stats['recovery_attempts']} = "
-                  f"A {stats['recovery_attempts_a']} + "
-                  f"B {stats['recovery_attempts_b']} + "
-                  f"E {stats['recovery_attempts_e']}")
+        # The formula of each class always contains the true s_zk, and x*G == Q
+        # accepts the signer's key only: every A, B and E signature yields
+        # exactly one verified key.
+        for c in by_class:
+            self.assertEqual(stats[f"recovery_verified_{c}"],
+                             stats[f"case_{c.upper()}_count"])
+        self.note(f"{stats['total_transaction_count']:,} = {observed:,} classified"
+                  f" + {stats['unclassified_count']:,} unclassified; "
+                  f"verified {stats['recovery_verified']}")
 
 
 # ======================================================================
@@ -616,20 +617,19 @@ class TestReproducibility(ResearchTestCase):
 
         for params in (TEST_PARAMS, LEGACY_PARAMS):
             first, second = run(77, params), run(77, params)
-            # The keys are the point: before the fix they came from `secrets`
-            # and differed on every run while z and k replayed correctly.
+            # The keys must replay too, not only z and k.
             self.assertEqual(first[0], second[0], "seeded keys must replay")
             self.assertEqual(first[1], second[1], "seeded signatures must replay")
             self.assertNotEqual(run(78, params)[0], first[0],
                                 "a different seed must give different keys")
-            # Sampling stays uniform on [1, n-1]; only the source changed.
+            # Seeded keys stay in [1, n-1].
             self.assertTrue(all(1 <= d < params.n for d in first[0]))
         self.note("2 curves: keys+signatures replay, seed 78 differs, range OK")
 
     def test_seeded_legacy_messages_replay(self):
         """A seeded legacy run replays its messages, not only its keys"""
-        # prev_txid came from os.urandom, outside the rng: the keys replayed,
-        # but every legacy preimage -- hence every z -- changed between runs.
+        # prev_txid and the amounts come from the rng, so the legacy
+        # preimages -- hence every z -- replay with the seed.
         def run(seed, sig_type):
             ec = Secp256k1(LEGACY_PARAMS, rng=random.Random(seed))
             d = ec.generate_unique_keys(1, 100)[0]
@@ -653,8 +653,7 @@ class TestReproducibility(ResearchTestCase):
         seeded = Secp256k1(TEST_PARAMS, rng=random.Random(0))
         self.assertFalse(default.rng_is_explicit)
         self.assertTrue(seeded.rng_is_explicit)
-        # The CLI used to pass SystemRandom() explicitly, so its default run
-        # was "explicit" too and did not take keys from secrets.
+        # The CLI default passes no rng either, so its keys come from secrets.
         self.assertFalse(build_ec(parse_args([])).rng_is_explicit)
         self.assertTrue(build_ec(parse_args(["--seed", "1"])).rng_is_explicit)
         a = Secp256k1(TEST_PARAMS).generate_unique_keys(8, 1)
@@ -672,7 +671,7 @@ class TestReproducibility(ResearchTestCase):
                 for _ in range(8)
             ]
             names = [os.path.basename(p) for p in written]
-            # The whole point of the fix: 8 writes -> 8 files, not 1.
+            # 8 writes in the same second -> 8 files.
             self.assertEqual(len(set(names)), 8, "filenames collided")
             self.assertEqual(len(os.listdir(tmp)), 8, "reports overwrote each other")
             for name in names:
@@ -716,9 +715,9 @@ class TestLegacyPreimages(ResearchTestCase):
 
     def test_amounts_never_go_negative(self):
         """Synthetic amounts never produce a negative or dust output"""
-        # The fee used to be drawn independently of the input, so fee > input
-        # was possible whenever input < 50_000 sat: output_value_sats went
-        # negative and int.to_bytes raised OverflowError (~1 tx in 612k).
+        # The fee is capped by the input, so the output can neither go
+        # negative (int.to_bytes would raise OverflowError) nor fall below the
+        # 546-sat dust threshold.
         draws = 3  # prev_index, input amount, fee
         builders = {
             "p2pkh": make_bitcoin_legacy_sighash_message,
@@ -747,8 +746,7 @@ class TestLegacyPreimages(ResearchTestCase):
 
 
 # ======================================================================
-# TESTS 26-35 -- added on 20 November 2026.  They come after the original
-# 25 so that tests 1-25 keep their numbers.
+# VERIFICATION AND PUBLIC-ONLY RECOVERY
 # ======================================================================
 class TestVerification(ResearchTestCase):
     GROUP = "Verification and public-only recovery"
@@ -761,7 +759,6 @@ class TestVerification(ResearchTestCase):
     def test_verify_accepts_zero_message_hash(self):
         """A valid signature with z = 0 (mod n) verifies"""
         # u1 = z/s = 0 makes u1*G the point at infinity, a legitimate summand.
-        # verify_signature used to return False on it.
         checked = 0
         for params in (TEST_PARAMS, LEGACY_PARAMS):
             ec = Secp256k1(params)
@@ -783,8 +780,8 @@ class TestVerification(ResearchTestCase):
 
     def test_public_key_check_rejects_twin(self):
         """The twin key passes verify_x_candidate; only x*G == Q is decisive"""
-        # README Known issue 2: (z, r, s) also verifies under -x - 2*z/r (nonce
-        # n - k), so verify_x_candidate alone cannot certify a key.
+        # (z, r, s) also passes the r-check under the twin key -x - 2*z/r
+        # (nonce n - k), so verify_x_candidate alone cannot certify a key.
         checked = 0
         for params in (TEST_PARAMS, LEGACY_PARAMS):
             ec = Secp256k1(params, rng=random.Random(31))
@@ -806,7 +803,7 @@ class TestVerification(ResearchTestCase):
     def test_case_e_recovery_ignores_secret_sublabel(self):
         """Case-E recovery needs only the class, not the secret E1/E2 label"""
         # The E1/E2 sub-label is computed from s_zk + s_rxk > s, i.e. from the
-        # secret split; recovery used to receive it and try only one S.
+        # secret split, so recovery must not depend on it: it tries both S.
         ec = Secp256k1(TEST_PARAMS, rng=random.Random(33))
         gen = ECDSAClassGenerator(ec)
         seen = {"E1": 0, "E2": 0}
@@ -856,9 +853,8 @@ class TestConstruction(ResearchTestCase):
     def test_constructed_report_counts_are_measured(self):
         """Constructed reports: constructed classes only, recovery measured"""
         # A constructed report counts each row once, under the class it was
-        # built for -- no C/D, no HYP-001, no E/A overlap -- while the recovery
-        # lines are measured.  They used to print attempts == rows,
-        # rejected == 0 and zeros on every per-class line.
+        # built for (no C, D, unclassified or HYP-001), while the recovery
+        # lines are measured.
         ec = Secp256k1(TEST_PARAMS, rng=random.Random(41))
         with redirect_stdout(io.StringIO()):
             rows, st, built, skipped = _collect_forged_rows(ec, ["A", "B", "E"], 12)
@@ -867,12 +863,12 @@ class TestConstruction(ResearchTestCase):
         self.assertEqual(len(rows), 36)
         for c in "ABE":
             self.assertEqual(st[f"case_{c}_count"], 12)
-        for key in ("case_C_count", "case_D_count", "case_E_overlapping_a_cases",
+        for key in ("case_C_count", "case_D_count", "unclassified_count",
                     "hypothesis_001_count"):
             self.assertEqual(st[key], 0, key)
         self.assertEqual(st["case_D_level_counts"], {})
-        self.assertEqual(st["transactions_with_valid_a"], 24)    # A + B rows
         self.assertEqual(st["total_observed_cases"], 36)
+        self.assertEqual(st["total_transaction_count"], 36)
         for agg in ("attempts", "verified"):
             self.assertEqual(st[f"recovery_{agg}"],
                              sum(st[f"recovery_{agg}_{c}"] for c in "abe"))
@@ -883,7 +879,6 @@ class TestConstruction(ResearchTestCase):
         self.assertTrue(24 <= st["recovery_attempts_e"] <= 48)   # 2-4 per E row
         for c in "abe":
             self.assertEqual(st[f"recovery_verified_{c}"], 12)
-        self.assertEqual(st["recovered_signature_count"], 36)
         self.note(f"A/B/E 12 each, C=D=0; attempts {st['recovery_attempts']}, "
                   f"rejected {st['recovery_rejected']}")
 
@@ -898,7 +893,6 @@ class TestConstruction(ResearchTestCase):
             gen.generate("B")
         message = str(ctx.exception)
         self.assertIn("not constructible on real secp256k1", message)
-        self.assertNotIn("never occurred", message)   # contradicted the README
         self.note("A, E recovered on secp256k1; B refused with reason")
 
 
@@ -965,8 +959,8 @@ class TestCommandLine(ResearchTestCase):
 
     def test_rand_bytes_is_randbytes_compatible(self):
         """rand_bytes works without Random.randbytes and replays seeded runs"""
-        # Random.randbytes exists only from Python 3.9; legacy mode called it
-        # and crashed on 3.8, the documented minimum.
+        # Random.randbytes exists only from Python 3.9; the documented
+        # minimum is 3.8.
         for seed in range(5):
             got = rand_bytes(random.Random(seed), 32)
             self.assertEqual(len(got), 32)
@@ -978,7 +972,7 @@ class TestCommandLine(ResearchTestCase):
 
 
 SUITE: Tuple[type, ...] = (
-    # tests 1-25, numbered as before 20 November 2026
+    # tests 1-25
     TestCurve, TestRecovery, TestFormatting, TestSearch, TestReproducibility,
     TestLegacyPreimages,
     # tests 26-35

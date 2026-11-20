@@ -33,8 +33,7 @@ SCOPE
 the search discovers.  ``--max-window`` bounds the work; on secp256k1 a single
 window is on the order of ``a`` itself, so the search is rejected rather than
 started.  The CLI ships only a secp17k1 demo bundle, so ``--curve-mode legacy``
-is refused with an error (it used to run the toy bundle modulo the secp256k1
-order and print a meaningless "No common x found ... MISMATCH" with exit 0).
+is refused with an error.
 """
 
 from __future__ import annotations
@@ -94,7 +93,7 @@ def exact_level(f: RatioLike) -> int:
 
     ``float`` is refused on purpose.  The reports carry f with 20 (test) or 80
     (legacy) significant digits; ``float`` keeps about 16.  Two concrete
-    failures followed from feeding it in:
+    failures would follow from feeding it in:
 
       * ``float("4.9999999999999999")`` is ``5.0``, so the window jumps to the
         level above the one that actually contains s_zk;
@@ -133,10 +132,8 @@ class ECDSATransaction:
     """One transaction.
 
     The search reads ``s, z, r, a, level`` only.  ``s_zk_true`` and
-    ``x_expected`` are ground truth kept for the self-check at the end of a
-    demo run; the original dataclass carried the answer (``x``) in the same
-    namespace as the inputs, which made it easy to lose track of what the
-    search actually consumes.
+    ``x_expected`` are ground truth for the self-check at the end of a demo
+    run; the search never reads them.
     """
 
     s: int
@@ -178,9 +175,8 @@ def s_zk_window(a: int, level: int) -> range:
     """Level window ``[a*level, a*(level+1) - 1]`` as a half-open range.
 
     Size ``a`` for ``level > 0`` and ``a - 1`` for ``level == 0``, because zero
-    is skipped there: ``s_zk == 0`` implies ``z == 0``.  ``s_zk == a*(level+1)``
-    would have floor ``level+1``, so the original inclusive upper bound added a
-    value that cannot belong to this level.
+    is skipped there: ``s_zk == 0`` implies ``z == 0``.  The upper bound is
+    exclusive because ``s_zk == a*(level+1)`` has floor ``level+1``.
     """
     if a < 1:
         raise ValueError("a must be >= 1")
@@ -309,9 +305,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
     if args.curve_mode != "test":
-        # The only input this CLI has is the secp17k1 demo bundle.  Running it
-        # modulo the secp256k1 order produced "No common x found ... MISMATCH"
-        # with exit status 0 instead of the refusal the README promises.
+        # The only input this CLI has is the secp17k1 demo bundle, and on
+        # secp256k1 a level window is far too wide to scan.
         raise SystemExit(
             "find_common_private_key: refusing --curve-mode legacy. The bundled "
             "demo is a secp17k1 bundle, and on secp256k1 a level window is about "
@@ -330,10 +325,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         naive_product *= window_size(w)
         print(f"tx{i}: N = {t.level}, s_zk in [{w.start}, {w.stop - 1}], window = {window_size(w):,}")
 
-    # The original printed only the Cartesian product and called it "total
-    # attempts". The algorithm never enumerates that product -- it builds one
-    # index per transaction and intersects -- so the figure overstated the work
-    # by about eleven orders of magnitude on this very demo.
+    # The search builds one index per transaction and intersects them; it
+    # never enumerates the Cartesian product, which is printed for scale only.
     print(f"\nCandidates actually evaluated: {scanned:,}")
     print(f"Naive Cartesian product (not performed): {naive_product:.6e}")
     expected_noise = naive_product / curve.n ** (len(txs) - 1)

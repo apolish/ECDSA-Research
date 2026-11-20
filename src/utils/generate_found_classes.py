@@ -29,9 +29,9 @@ So if we pick a nonce ``k`` (hence ``r``) and two additive parts
 
 The result verifies against ``Q = x*G`` like any other signature.  Before a
 row is returned this is checked twice, independently: ``verify_signature``
-runs standard ECDSA verification against ``Q``, and ``recover_private_keys``
-re-derives the key from the public ``(z, r, s)`` and accepts it only if
-``x*G == Q``.
+runs standard ECDSA verification against ``Q``, and the report's own
+recovery (``recover_signature``) re-derives the key from the public
+``(z, r, s)`` and accepts it only if ``x*G == Q``.
 
 THE ONE THING YOU CANNOT CONTROL
 ================================
@@ -59,9 +59,10 @@ To make ``s_zk`` land where we need it, ``z`` is chosen as ``s_zk * k mod n``.
 It is therefore **not** the hash of any particular message (with ``s_zk = 1``,
 the only class-A path on secp256k1, it even equals the nonce).
 ``is_message_bound`` is always ``False`` on the returned object.
-This is the same limitation the repository already documents for its
-"test" mode -- and it is exactly why constructing these signatures is not an
-attack: it requires already knowing ``x``, ``k`` and being free to choose ``z``.
+Test mode has the same property: there ``z`` is drawn at random
+(``Secp256k1.hash_message``).  It is also exactly why constructing these
+signatures is not an attack: it requires already knowing ``x``, ``k`` and being
+free to choose ``z``.
 A real signer's ``x`` is secret and its ``z`` is a fixed message hash, so none
 of this transfers to a signature you did not create yourself.
 """
@@ -93,7 +94,7 @@ try:  # package layout: src/ecurve, src/utils
     from utils.generate_transactions import (  # type: ignore
         _half_difference_parts,
         analyse_signature,
-        recover_private_keys,
+        recover_signature,
     )
 except ImportError:  # flat layout
     try:
@@ -101,7 +102,7 @@ except ImportError:  # flat layout
         from generate_transactions import (  # type: ignore[no-redef]
             _half_difference_parts,
             analyse_signature,
-            recover_private_keys,
+            recover_signature,
         )
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
@@ -160,24 +161,19 @@ class ForgedSignature:
 # CLASSIFIER
 # ======================================================================
 # The classification is the report's own ``analyse_signature`` -- not a copy
-# of it -- so a forged row is labelled exactly as a sampled one.  The previous
-# version re-implemented the decision "verbatim" in this file.
+# of it -- so a forged row is labelled exactly as a sampled one.
 def classify(
     s: int, s_zk: int, s_rxk: int, s_zr: int, n: int
 ) -> Tuple[Optional[str], Optional[int], Optional[Fraction], Optional[Fraction]]:
     """Return ``(label, a, m1, m2)`` for a signature's derived scalars.
 
     ``label`` is one of ``E1``/``E2``/``A``/``B``/``C``/``D`` or ``None`` when no
-    class applies.  Case E takes precedence here (a row gets one label); the
-    report's statistics still count an E signature in A/B/C/D as well when it
-    has a valid ``a``.
+    class applies.  A signature gets at most one label and E takes precedence,
+    exactly as in the report.  ``a``, ``m1`` and ``m2`` are None for E and for
+    an unlabelled signature.
     """
     an = analyse_signature(s, s_zk, s_rxk, s_zr, n)
-    if an.e_detected:
-        return an.e_label, None, None, None
-    if an.label is None:
-        return None, None, None, None
-    return an.label, an.a, an.m1, an.m2
+    return an.case, an.a, an.m1, an.m2
 
 
 # ======================================================================
@@ -270,16 +266,11 @@ class ECDSAClassGenerator:
         act_s_zr = (z * r_x) % n
 
         analysis = analyse_signature(s, act_s_zk, act_s_rxk, act_s_zr, n)
-        # Class match: E accepts E1/E2; A/B must match exactly and must not be
-        # E as well (one row, one label -- as before).
-        if want == "E":
-            if not analysis.e_detected:
-                return None
-            label = analysis.e_label
-        else:
-            if analysis.e_detected or analysis.label != want:
-                return None
-            label = want
+        # The signature must land in the requested class (E accepts E1 and E2).
+        # Labels are exclusive, so an A or B match is never an E as well.
+        if analysis.cls != want:
+            return None
+        label = analysis.case
 
         # Independent check 1: standard ECDSA verification against Q = x*G.
         public_key = self._ec.scalar_multiply(x, self._ec.curve.g)
@@ -287,22 +278,16 @@ class ECDSAClassGenerator:
                 public_key, (z, r_x, r_y, s, k, k_inv)):
             return None
         # Independent check 2: the public-only recovery of the constructed
-        # class, decided by x*G == Q, must return this very key.
-        if want == "E":
-            keys, attempts = recover_private_keys(
-                self._ec, "E", s, 0, z, r_x, 0, public_key)
-        else:
-            keys, attempts = recover_private_keys(
-                self._ec, want, s, act_s_zr, z, r_x, analysis.a or 0, public_key)
+        # class (the report's own), decided by x*G == Q, must return this key.
+        keys, attempts = recover_signature(
+            self._ec, analysis, s, act_s_zr, z, r_x, public_key)
         if keys != [x]:
             return None
 
         return ForgedSignature(
             case=label, z=z, r_x=r_x, r_y=r_y, s=s, k=k, k_inv=k_inv, x=x,
             s_zk=act_s_zk, s_rxk=act_s_rxk, s_zr=act_s_zr,
-            a=None if want == "E" else analysis.a,
-            m1=None if want == "E" else analysis.m1,
-            m2=None if want == "E" else analysis.m2,
+            a=analysis.a, m1=analysis.m1, m2=analysis.m2,
             recovered=keys, recovery_attempts=attempts,
             is_message_bound=False,
         )
@@ -310,8 +295,7 @@ class ECDSAClassGenerator:
     def _random_nonce_point(self) -> Tuple[int, int, int]:
         """Draw a usable nonce and return ``(k, r_x, r_y)`` with ``r_x != 0``.
 
-        ``k`` is uniform on ``[1, n-1]`` (``randrange(1, n - 1)`` before, which
-        never returned n-1).
+        ``k`` is uniform on ``[1, n-1]``.
         """
         n = self._n
         while True:
@@ -422,11 +406,8 @@ class ECDSAClassGenerator:
         and odd trial divisors are scanned).  For ``lo < 2`` the first divisor
         found is the smallest prime factor, which is returned at once instead
         of scanning on to the budget.  Returns None when nothing is found
-        within ``min(sqrt(m), budget)``.
-
-        The previous fallback returned ``m`` itself, which always produced
-        ``s == s_zk`` and hence an invalid ``a == s``: it could only cause a
-        retry, never a row.
+        within ``min(sqrt(m), budget)``.  ``m`` itself is never returned: it
+        would give ``s == s_zk`` and hence the invalid ``a == s``.
         """
         if m <= lo:
             return None

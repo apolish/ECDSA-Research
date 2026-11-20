@@ -8,8 +8,9 @@ Configurations are the triples (s_zk, s_rxk, P) in [1, n-1]^3 -- equivalently
 (s, s_zr, s_zk) with s = s_zk + s_rxk and s_zr = s_zk * P (mod n) -- i.e. the
 uniform ("null") model of one signature.  Counts:
 
-  * case E                      -- over pairs (s_zk, s_rxk); the old detector
-                                   (S even only) in brackets;
+  * case E                      -- over pairs (s_zk, s_rxk); the S-even
+                                   family (S % 4 == 2) in brackets, then the
+                                   E1:E2 split;
   * case A label                -- s_zk == a: exactly one s_zk per (s, s_zr)
                                    pair with a valid a;
   * case-B formula event        -- s_zk * s_rxk == a * (s + s_zr)  (mod n),
@@ -47,7 +48,7 @@ def _add(p1, p2):
 
 def count_case_e(n):
     """Ordered pairs (s_zk, s_rxk) in [1, n-1]^2 that are case E."""
-    total = old = e1 = 0
+    total = even = e1 = 0
     for big_s in range(2, 2 * n):
         if big_s % 4 not in (1, 2):
             continue
@@ -56,9 +57,9 @@ def count_case_e(n):
         if 1 <= smaller and larger < n:
             pairs = 2 if larger != smaller else 1
             total += pairs
-            old += pairs if big_s % 2 == 0 else 0
+            even += pairs if big_s % 2 == 0 else 0
             e1 += pairs if big_s < n else 0
-    return total, old, e1
+    return total, even, e1
 
 
 def count_a_and_b(n):
@@ -143,9 +144,9 @@ def main():
     cube, square = (n - 1) ** 3, (n - 1) ** 2
 
     t0 = time.time()
-    e_all, e_old, e1 = count_case_e(n)
+    e_all, e_even, e1 = count_case_e(n)
     print(f"case E          : {e_all:,} of (n-1)^2 pairs  ({e_all / square:.6e}; "
-          f"4/(3n) = {4 / (3 * n):.6e})  [S even only: {e_old:,}]  "
+          f"4/(3n) = {4 / (3 * n):.6e})  [S even only: {e_even:,}]  "
           f"E1:E2 = {e1:,}:{e_all - e1:,}")
 
     valid, formula, label_b = count_a_and_b(n)

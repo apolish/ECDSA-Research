@@ -6,27 +6,30 @@
 
 tables built in 0.2s
 
-=== REAL (100,000,000 tuples, 10s) ===
-  valid a : 24,984,534  rate 0.249845
-  case A  :        258  rate 2.5800e-06
-  case B  :          0  rate 0.0000e+00
-  case C  :     55,948  rate 5.5948e-04
-  case E  :      1,295  rate 1.2950e-05
+=== REAL (100,000,000 tuples, 11s) ===
+  case A      :        258  rate 2.5800e-06
+  case B      :          0  rate 0.0000e+00
+  case C      :     55,947  rate 5.5947e-04
+  case D      : 24,928,022  rate 2.4928e-01
+  case E      :      1,295  rate 1.2950e-05
+  unclassified: 75,014,478  rate 7.5014e-01
 
 === NULL (100,000,000 tuples, 8s) ===
-  valid a : 24,987,760  rate 0.249878
-  case A  :        226  rate 2.2600e-06
-  case B  :          0  rate 0.0000e+00
-  case C  :     55,968  rate 5.5968e-04
-  case E  :      1,336  rate 1.3360e-05
+  case A      :        226  rate 2.2600e-06
+  case B      :          0  rate 0.0000e+00
+  case C      :     55,968  rate 5.5968e-04
+  case D      : 24,931,285  rate 2.4931e-01
+  case E      :      1,336  rate 1.3360e-05
+  unclassified: 75,011,185  rate 7.5011e-01
 
 === REAL vs NULL (two-sample Poisson z) ===
-  valid a : real 24,984,534  null 24,987,760  z = -0.46
-  case A  : real        258  null        226  z = +1.45
-  case B  : real          0  null          0  z = +0.00
-  case C  : real     55,948  null     55,968  z = -0.06
-  case E  : real      1,295  null      1,336  z = -0.80
+  case A      : real        258  null        226  z = +1.45
+  case B      : real          0  null          0  z = +0.00
+  case C      : real     55,947  null     55,968  z = -0.06
+  case D      : real 24,928,022  null 24,931,285  z = -0.46
+  case E      : real      1,295  null      1,336  z = -0.80
+  unclassified: real 75,014,478  null 75,011,185  z = +0.27
 
 === construction cost on real secp256k1 (100 signatures each) ===
-  class A: 100 signatures in 4.07s  (40.7 ms each)
-  class E: 100 signatures in 5.33s  (53.3 ms each)
+  class A: 100 signatures in 4.55s  (45.5 ms each)
+  class E: 100 signatures in 5.70s  (57.0 ms each)

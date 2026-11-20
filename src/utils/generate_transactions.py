@@ -20,6 +20,11 @@ pinned down by a formula in the public data ``(z, r, s)`` alone.  When it is,
     case C:  s_zk/a is an integer > 1        (m1 not fixed by public data)
     case D:  s_zk/a is not an integer
 
+Every signature gets at most one class: E when the half-difference split
+holds, otherwise A, B, C or D when the auxiliary ``a`` is valid, otherwise none
+("unclassified").  The class counts of a report therefore add up to the number
+of signatures.
+
 The LABELS are computed from the secret split and are research annotations;
 an attacker cannot evaluate them.  The recovery FORMULAS use public data only:
 given the class, case E tries both parts of both admissible S, i.e. it does
@@ -28,14 +33,8 @@ not use the secret E1/E2 sub-label.
 Every candidate is checked on the curve before it is reported.  With the
 signer's public key Q (which the sampling pipeline always has) the check is
 the decisive ``x*G == Q``; without it, ``verify_x_candidate`` is used, which
-also accepts the twin key -x - 2*z*r^-1 (see README, Known issue 2).
-Rejected candidates are counted, not printed as results.
-
-NAMING NOTE
-===========
-The case-E detector is named for what it tests: an additive split of S whose
-two parts differ by exactly S//2 + 1.  Its former name referred to an unrelated
-number-theoretic conjecture and has been dropped.
+also accepts the twin key -x - 2*z*r^-1.  Rejected candidates are counted, not
+printed as results.
 """
 
 from __future__ import annotations
@@ -46,7 +45,7 @@ import random
 import secrets
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from fractions import Fraction
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -56,9 +55,6 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 # Supports both layouts, because either may be the working directory:
 #   <repo>/src/ecurve/secp256k1.py   +  <repo>/src/utils/this_file.py
 #   ./secp256k1.py                   +  ./this_file.py            (flat)
-# The original appended only the parent directory and then reported failure
-# with "make sure the file is in the same directory" -- the one arrangement
-# that was guaranteed not to work.
 # ----------------------------------------------------------------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
 for _candidate in (os.path.abspath(os.path.join(_HERE, os.pardir)), _HERE):
@@ -108,39 +104,34 @@ STATS_ORDER: Tuple[str, ...] = (
     "total_transaction_count",
     "signature_space_per_key",
     "signature_space_all_keys",
-    "transactions_with_valid_a",
+    # A + B + C + D + E = Total Observed Cases;
+    # Total Observed Cases + Unclassified Count = Total Transaction Count.
     "total_observed_cases",
     "case_A_count",
     "case_B_count",
     "case_C_count",
     "case_D_count",
     "case_E_count",
-    "case_E_overlapping_a_cases",
+    "unclassified_count",
     "hypothesis_001_count",
+    # The aggregates equal the sums of the per-class lines below them.
     "recovery_attempts",
     "recovery_verified",
     "recovery_rejected",
-    # Per-class breakdown: the aggregates above must equal the sum of these.
-    # Printing them makes a silently dropped class visible instead of leaving
-    # the reader to factor 1564 = 224 + 2*670 by hand.
     "recovery_attempts_a",
     "recovery_attempts_b",
     "recovery_attempts_e",
     "recovery_verified_a",
     "recovery_verified_b",
     "recovery_verified_e",
-    # Signatures with at least one verified key; unlike Recovery Verified this
-    # does not count an A/E overlap twice.
-    "recovered_signature_count",
 )
 
 
 @dataclass(frozen=True)
 class ReportConfig:
-    """Report settings. Column widths are computed from the data at write
-    time; the original used fixed widths of 80 characters, which a Fraction
-    ``num/den`` (up to ~157 chars on secp256k1) or a candidate list silently
-    overflowed, shifting every column to its right."""
+    """Report settings.  Column widths are computed from the data at write
+    time, so a long Fraction ``num/den`` (up to ~157 chars on secp256k1) or a
+    candidate list cannot shift the columns to its right."""
 
     precision: int
 
@@ -155,11 +146,9 @@ def _build_report_config(curve: CurveParams) -> ReportConfig:
 def _format_ratio(num: int, den: int, digits: int) -> str:
     """Render ``num/den`` with ``digits`` fractional places, exactly.
 
-    Pure integer arithmetic.  The original built this with ``Decimal`` under a
-    global precision and then recovered the integer part by splitting the
-    string on '.', which loses the fractional part entirely once the integer
-    part is long and would misparse any value Decimal chose to render in
-    exponent form.
+    Pure integer arithmetic: no global ``Decimal`` precision, no string
+    splitting and never an exponent form, whatever the size of the integer
+    part.
     """
     if den == 0:
         raise ZeroDivisionError("denominator must be non-zero")
@@ -196,12 +185,8 @@ def _detect_half_difference_split(
         S = 2m+1 (odd) -> 2u = 3m + 2, needs m even -> S = 1 (mod 4)
         S = 0 or 3 (mod 4)                          -> no integer split
 
-    Three defects are fixed here.  The original chained comparison contained
-    ``(s_zk - n) + (n - s_rxk)``, which is identically ``s_zk - s_rxk`` and
-    therefore tested nothing.  It relied on integer truncation instead of
-    testing integrality of the split.  And it required ``S`` to be even, which
-    discards the whole ``S % 4 == 1`` family: exactly half of all case-E
-    pairs (66,442 of 132,884 on the test curve, by exhaustive count).
+    Both families are detected; each holds exactly half of all case-E pairs
+    (66,442 of 132,884 on the test curve, by exhaustive count).
 
     The E1/E2 sub-label depends on the secret parts; the recovery path does
     not use it (``_guesses_case_e`` tries both admissible S).
@@ -268,9 +253,8 @@ def _guesses_case_a(a: int) -> List[int]:
 def _guesses_case_b(s: int, s_zr: int, a: int, curve_n: int) -> List[int]:
     """Case B: m1 solves ``a*m1^2 - s*m1 + (s + s_zr) == 0 (mod n)``.
 
-    Uses the local ``mod_sqrt_all`` instead of ``sympy.sqrt_mod``; sympy was an
-    undeclared dependency pulled in for this one call.  The original also
-    declared ``-> List[int]`` while returning a dict on the no-root path.
+    Returns the guesses ``a*m1`` for every root (none when the discriminant is
+    a non-residue).  By Vieta they are exactly ``{s_zk, s_rxk}``.
     """
     disc = (s * s - 4 * a * ((s_zr + s) % curve_n)) % curve_n
     roots = mod_sqrt_all(disc, curve_n)
@@ -290,9 +274,6 @@ def _guesses_case_e(s: int, curve_n: int) -> List[int]:
     secret parts, so a recovery that uses public data only must try both.
     An ``S`` is admissible when ``S % 4`` is 1 or 2 and both parts are valid
     scalars (``1 <= smaller`` and ``larger < n``).  At most four guesses.
-
-    The previous version took the E1/E2 sub-label as an argument and tried only
-    the matching ``S`` -- i.e. it used secret information to halve the work.
     """
     guesses: List[int] = []
     for big_s in (s, s + curve_n):
@@ -364,11 +345,11 @@ def _check_hypothesis_001(digit: int, s: int, s_zk: int, a: int) -> str:
     (2) is an identity, not an approximation: it matched (1) on 5e5 random
     (N, a, w) triples with zero deviations.
 
-    CAUTION.  The weaker condition ``floor(a/w) in {N, N-1}`` -- which earlier
-    documentation gave as the reduction -- is implied by (1) but does NOT imply
-    it: which of the two values occurs is fixed by ``delta``.  On 10^6 uniform
-    gated triples below 2^64 the weak form holds about 2.2 times as often as
-    (1) (``docs/readme_measurements.py``).  Do not substitute the weaker form.
+    CAUTION.  The weaker condition ``floor(a/w) in {N, N-1}`` is implied by (1)
+    but does NOT imply it: which of the two values occurs is fixed by
+    ``delta``.  On 10^6 uniform gated triples below 2^64 the weak form holds
+    about 2.2 times as often as (1) (``docs/readme_measurements.py``).  Do not
+    substitute the weaker form.
 
     (2) constrains the first two partial quotients of the continued fraction of
     ``s_zk/a``.  For independent uniform ``s_zk`` and ``a`` the law of that
@@ -377,11 +358,7 @@ def _check_hypothesis_001(digit: int, s: int, s_zk: int, a: int) -> str:
     P(floor(a/w) = 1) is about 0.436, against 0.415 under Gauss-Kuzmin.
     Both ``s_zk`` and ``a`` are needed to evaluate HYP-001 and ``s_zk`` is
     secret, so it is a statistical observation, not a recovery path.
-
-    Fixes: ``digit`` was annotated ``str`` while being compared with ``> 1``;
-    the unused ``s_rxk``, ``s_zr``, ``r``, ``private_key`` and ``k_inv``
-    arguments are gone; ``w == 0`` is guarded instead of relying on case D
-    never producing it.
+    ``w == 0`` (s_zk divisible by a, i.e. not case D) returns "-".
     """
     if not (digit > 1 and s > s_zk and s_zk % 2 == 0):
         return "-"
@@ -397,28 +374,33 @@ def _check_hypothesis_001(digit: int, s: int, s_zk: int, a: int) -> str:
 # SHARED CLASSIFICATION AND COUNTING
 # ======================================================================
 # One classifier and one accumulator serve both the sampling run and the
-# --tx-with-classes construction.  The construction used to fill its report
-# with hard-coded counters (attempts == rows, rejected == 0) and left the
-# per-class recovery lines at 0; it now counts exactly like a sampling run.
+# --tx-with-classes construction.
 @dataclass(frozen=True)
 class SignatureAnalysis:
-    """Research labels of one signature (computed from the secret split)."""
+    """Class of one signature (computed from the secret split).
 
-    e_detected: bool
-    e_label: str                 # "E1" or "E2"; meaningful only if e_detected
-    a: Optional[int]             # auxiliary a, None when no valid a exists
-    label: Optional[str]         # "A", "B", "C", "D" or None (no valid a)
+    Every signature gets at most one class: E when the half-difference split
+    holds; otherwise A, B, C or D when the auxiliary ``a`` is valid; otherwise
+    none (``case is None``, "unclassified").
+    """
+
+    case: Optional[str]          # "A", "B", "C", "D", "E1", "E2" or None
+    a: Optional[int]             # auxiliary a (cases A-D only)
     m1: Optional[Fraction]
     m2: Optional[Fraction]
-    level: Optional[int]         # floor(s_zk / a) for case D
+    level: Optional[int]         # floor(s_zk / a), case D only
     hypothesis: str              # "HYP-001" or "-"
+
+    @property
+    def cls(self) -> Optional[str]:
+        """The class without the E1/E2 sub-label: "A" ... "E", or None."""
+        return None if self.case is None else self.case[0]
 
 
 def auxiliary_a(s: int, s_zr: int, curve_n: int) -> Optional[int]:
     """``a = s mod ((s_zr - s) mod n)`` when it is valid, else None.
 
-    Valid means ``s_zr > s`` and ``0 < a != s``.  The guard ``a != s_zr`` of
-    the original was unreachable, since a < s_zr - s < s_zr.
+    Valid means ``s_zr > s`` and ``0 < a != s``.
     """
     if s_zr <= s:
         return None
@@ -431,43 +413,31 @@ def analyse_signature(
 ) -> SignatureAnalysis:
     """Classify one signature exactly as the report does.
 
-    Case A is tested first and on m1 alone: the original also required m2 to
-    be non-integral, so a perfectly good ``s_zk == a`` was relabelled C -- and
-    silently not recovered -- whenever m2 happened to be an integer too.
+    Case E takes precedence (an E signature is recoverable through its own
+    formula, whatever else it is).  Among A-D, case A is decided on ``m1``
+    alone, so ``s_zk == a`` is case A even when ``m2`` is an integer too.
     """
     e_detected, e_label = _detect_half_difference_split(s, s_zk, s_rxk, curve_n)
+    if e_detected:
+        return SignatureAnalysis(e_label, None, None, None, None, "-")
     a = auxiliary_a(s, s_zr, curve_n)
     if a is None:
-        return SignatureAnalysis(e_detected, e_label, None, None, None, None, None, "-")
+        return SignatureAnalysis(None, None, None, None, None, "-")
 
     m1 = Fraction(s_zk, a)
     m2 = Fraction(s + s_zr, s_rxk) if s_rxk else None
-    level: Optional[int] = None
-    hypothesis = "-"
     if m1 == 1:
-        label = "A"
-    elif m2 is not None and m1.denominator == 1 and m2.denominator == 1 and m1 == m2:
-        label = "B"
-    elif m1.denominator == 1:
-        label = "C"
-    else:
-        label = "D"
-        level = s_zk // a
-        hypothesis = _check_hypothesis_001(level, s, s_zk, a)
-    return SignatureAnalysis(e_detected, e_label, a, label, m1, m2, level, hypothesis)
+        return SignatureAnalysis("A", a, m1, m2, None, "-")
+    if m2 is not None and m1.denominator == 1 and m2.denominator == 1 and m1 == m2:
+        return SignatureAnalysis("B", a, m1, m2, None, "-")
+    if m1.denominator == 1:
+        return SignatureAnalysis("C", a, m1, m2, None, "-")
+    level = s_zk // a
+    return SignatureAnalysis("D", a, m1, m2, level,
+                             _check_hypothesis_001(level, s, s_zk, a))
 
 
-@dataclass
-class RecoveryOutcome:
-    """Keys recovered from public data for one signature, per class path."""
-
-    e_keys: List[int] = field(default_factory=list)
-    e_attempts: int = 0
-    ab_keys: List[int] = field(default_factory=list)
-    ab_attempts: int = 0
-
-
-def recover_for_analysis(
+def recover_signature(
     ec: Secp256k1,
     analysis: SignatureAnalysis,
     s: int,
@@ -475,89 +445,72 @@ def recover_for_analysis(
     z: int,
     r: int,
     public_key: Optional[Tuple[int, int]] = None,
-) -> RecoveryOutcome:
-    """Run the recovery formula of every class the signature belongs to."""
-    out = RecoveryOutcome()
-    if analysis.e_detected:
-        out.e_keys, out.e_attempts = recover_private_keys(
-            ec, "E", s, 0, z, r, 0, public_key)
-    if analysis.label in ("A", "B"):
-        out.ab_keys, out.ab_attempts = recover_private_keys(
-            ec, analysis.label, s, s_zr, z, r, analysis.a or 0, public_key)
-    return out
+) -> Tuple[List[int], int]:
+    """Run the recovery formula of the signature's class: ``(keys, attempts)``.
+
+    Classes A, B and E have a formula; C, D and unclassified signatures yield
+    ``([], 0)``.
+    """
+    cls = analysis.cls
+    if cls == "E":
+        return recover_private_keys(ec, "E", s, 0, z, r, 0, public_key)
+    if cls in ("A", "B"):
+        return recover_private_keys(ec, cls, s, s_zr, z, r, analysis.a or 0, public_key)
+    return [], 0
 
 
 class RunStats:
     """Accumulates the statistics block of a report.
 
-    Sampled reports (``add``):
-      * every E signature counts in case E; if it also has a valid ``a`` it
-        counts in A/B/C/D as well, and in ``case_E_overlapping_a_cases``;
-      * ``total_observed_cases`` subtracts that overlap;
-      * recovery runs the formula of each class the signature belongs to, so a
-        signature that is both E and A/B contributes to both per-class lines,
-        while ``recovered_signature_count`` counts it once.
-
-    Constructed reports (``add_constructed``): each row counts once, under the
-    class it was constructed for (A, B or E).  Cases C and D, HYP-001 and the
-    E/A overlap stay 0 by design, ``transactions_with_valid_a`` counts the A and
-    B rows, and the recovery lines are the attempts and keys of the recovery of
-    that class -- measured, not assumed.
+    Every signature counts once: in case A, B, C, D or E, or as unclassified.
+    So ``A + B + C + D + E = Total Observed Cases`` and ``Total Observed Cases
+    + Unclassified Count = Total Transaction Count``.  Recovery runs the formula
+    of the signature's class (A, B or E); the per-class recovery lines show its
+    attempts and verified keys, and the aggregate lines are their sums.  With
+    the check ``x*G == Q`` a signature yields at most one verified key, so
+    ``Recovery Verified`` is also the number of recovered signatures.
     """
 
     def __init__(self) -> None:
         self.counters = {"A": 0, "B": 0, "C": 0, "D": 0, "E": 0}
+        self.unclassified = 0
         self.level_counts: Dict[int, int] = {}
-        self.with_valid_a = 0
-        self.e_overlap = 0
         self.hyp_001 = 0
         self.attempts = {"A": 0, "B": 0, "E": 0}
         self.verified = {"A": 0, "B": 0, "E": 0}
-        self.recovered_signatures = 0
 
-    def add(self, analysis: SignatureAnalysis, outcome: RecoveryOutcome) -> None:
-        if analysis.e_detected:
-            self.counters["E"] += 1
-            self.attempts["E"] += outcome.e_attempts
-            self.verified["E"] += len(outcome.e_keys)
-        if analysis.label is not None:
-            self.with_valid_a += 1
-            if analysis.e_detected:
-                self.e_overlap += 1
-            self.counters[analysis.label] += 1
-            if analysis.label in ("A", "B"):
-                self.attempts[analysis.label] += outcome.ab_attempts
-                self.verified[analysis.label] += len(outcome.ab_keys)
-            if analysis.label == "D" and analysis.level is not None:
-                self.level_counts[analysis.level] = (
-                    self.level_counts.get(analysis.level, 0) + 1)
-                if analysis.hypothesis == "HYP-001":
-                    self.hyp_001 += 1
-        if outcome.e_keys or outcome.ab_keys:
-            self.recovered_signatures += 1
-
-    def add_constructed(self, cls: str, keys: Sequence[int], attempts: int) -> None:
-        """One directly constructed row, counted under its constructed class only."""
+    def add(
+        self,
+        cls: Optional[str],
+        keys: Sequence[int] = (),
+        attempts: int = 0,
+        level: Optional[int] = None,
+        hypothesis: str = "-",
+    ) -> None:
+        """Count one signature of class ``cls`` ("A" ... "E", or None)."""
+        if cls is None:
+            self.unclassified += 1
+            return
         self.counters[cls] += 1
-        if cls in ("A", "B"):
-            self.with_valid_a += 1
-        self.attempts[cls] += attempts
-        self.verified[cls] += len(keys)
-        if keys:
-            self.recovered_signatures += 1
+        if cls in self.attempts:
+            self.attempts[cls] += attempts
+            self.verified[cls] += len(keys)
+        if cls == "D" and level is not None:
+            self.level_counts[level] = self.level_counts.get(level, 0) + 1
+            if hypothesis == "HYP-001":
+                self.hyp_001 += 1
 
     def as_dict(self) -> Dict[str, object]:
         attempts = sum(self.attempts.values())
         verified = sum(self.verified.values())
         return {
-            "transactions_with_valid_a": self.with_valid_a,
-            "total_observed_cases": sum(self.counters.values()) - self.e_overlap,
+            "total_observed_cases": sum(self.counters.values()),
             "case_A_count": self.counters["A"],
             "case_B_count": self.counters["B"],
             "case_C_count": self.counters["C"],
             "case_D_count": self.counters["D"],
             "case_E_count": self.counters["E"],
-            "case_E_overlapping_a_cases": self.e_overlap,
+            "unclassified_count": self.unclassified,
             "hypothesis_001_count": self.hyp_001,
             "recovery_attempts": attempts,
             "recovery_verified": verified,
@@ -568,7 +521,6 @@ class RunStats:
             "recovery_verified_a": self.verified["A"],
             "recovery_verified_b": self.verified["B"],
             "recovery_verified_e": self.verified["E"],
-            "recovered_signature_count": self.recovered_signatures,
             "case_D_level_counts": dict(self.level_counts),
         }
 
@@ -580,10 +532,9 @@ def _keys_text(keys: Sequence[int]) -> str:
 def rand_bytes(rng: random.Random, n: int) -> bytes:
     """``n`` random bytes from ``rng`` on every supported Python.
 
-    ``random.Random.randbytes`` exists only from Python 3.9, so calling it
-    broke legacy mode on 3.8.  For a seeded ``random.Random`` this expression
-    is byte-for-byte what ``randbytes`` returns on CPython 3.9+, so seeded runs
-    replay unchanged.
+    ``random.Random.randbytes`` exists only from Python 3.9.  For a seeded
+    ``random.Random`` this expression returns byte-for-byte what
+    ``randbytes`` returns on CPython 3.9+.
     """
     return rng.getrandbits(8 * n).to_bytes(n, "little")
 
@@ -618,10 +569,8 @@ def _write_report(
     *,
     preamble_note: Optional[str] = None,
 ) -> str:
-    # The timestamp alone resolves to one second, so two reports written inside
-    # the same second silently overwrote each other -- easy to hit when scripting
-    # runs or generating a couple of small --tx-with-classes reports back to back.
-    # A short random tag makes the name unique; the timestamp still sorts runs.
+    # The timestamp resolves to one second; the short random tag keeps reports
+    # written within the same second apart, and the timestamp still sorts runs.
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     tag = secrets.token_hex(4)
     os.makedirs(out_dir, exist_ok=True)
@@ -672,12 +621,9 @@ def _write_report(
 # DEMO
 # ======================================================================
 def _print_once_demo(ec: Secp256k1, sig_type: str = "p2pkh") -> None:
-    """Single key-generation / signing / verification round.
+    """Single key-generation / signing / verification round (``--demo``).
 
-    Fixes the crash that made ``--demo`` unusable: ``sign_message`` returns the
-    six-tuple ``(z, r_x, r_y, s, k, k_inv)`` and the old code unpacked four
-    values from it, raising ``ValueError: too many values to unpack``.
-    ``sig_type`` is now honoured instead of being hardcoded to p2pkh.
+    In legacy mode ``sig_type`` selects the P2PKH or the BIP 143 preimage.
     """
     t0 = time.time()
     private_key, public_key = ec.generate_keypair()
@@ -729,22 +675,16 @@ def _build_message(
     curve = ec.curve
     if curve.mode != "legacy":
         # Test mode draws z directly (Secp256k1.hash_message ignores the
-        # message), so no message is built.  The previous version drew a
-        # random string here that was never used.
+        # message), so no message is built.
         return b""
 
-    # prev_txid comes from the run's rng like every other draw.  It used to be
-    # os.urandom(32), which bypassed --seed: a seeded legacy run replayed its
-    # keys but not a single z.  ``rand_bytes`` instead of ``Random.randbytes``
-    # keeps legacy mode working on Python 3.8.
+    # prev_txid comes from the run's rng like every other draw, so --seed
+    # replays legacy messages too.
     prev_txid = rand_bytes(ec.rng, 32)
     prev_index = ec.rng.randint(0, 3)
     input_value_sats = ec.rng.randint(10_000, 100_0000_0000)
-    # Cap the fee so the output stays at or above 546 sat, the P2PKH dust
-    # threshold.  The fee used to be drawn independently of the input, so any
-    # input under 50_000 sat could get a larger fee: the output went negative
-    # and int.to_bytes raised OverflowError in the preimage builder (about one
-    # transaction in 612k, which is why short legacy runs rarely showed it).
+    # The fee is capped so the output stays at or above 546 sat, the P2PKH
+    # dust threshold, and can never go negative.
     fee_sats = ec.rng.randint(1_000, min(50_000, input_value_sats - 546))
     output_value_sats = input_value_sats - fee_sats
 
@@ -774,8 +714,6 @@ def _collect_rows(
     start = time.time()
 
     # --- key pool -----------------------------------------------------
-    # The original test was ``private_key != 0 and private_key < curve.n``,
-    # which accepts negative keys and defers the failure to generate_keypair.
     if private_key != 0:
         if not 1 <= private_key < n:
             raise ValueError(f"private key must be in [1, n-1]; got {private_key}")
@@ -806,21 +744,25 @@ def _collect_rows(
             analysis = analyse_signature(s, s_zk, s_rxk, s_zr, n)
             # Recovery uses public data only; the public key makes the final
             # check decisive (x*G == Q), so a twin key can never be reported.
-            outcome = recover_for_analysis(ec, analysis, s, s_zr, z, r_x, public_key)
-            run_stats.add(analysis, outcome)
+            keys, attempts = recover_signature(ec, analysis, s, s_zr, z, r_x, public_key)
+            run_stats.add(analysis.cls, keys, attempts, analysis.level,
+                          analysis.hypothesis)
+
+            case = analysis.case
+            if case is None:              # unclassified: counted, not printed
+                continue
 
             # ---------- case E row -----------------------------------
-            if analysis.e_detected and printed["E"] < output_count:
-                printed["E"] += 1
-                rows.append([
-                    analysis.e_label, s, s_zk, s_rxk, "-", z, r_x, r_y, current_key,
-                    k, k_inv, "-", "-", "-", "-", _keys_text(outcome.e_keys), "-",
-                ])
+            if case.startswith("E"):
+                if printed["E"] < output_count:
+                    printed["E"] += 1
+                    rows.append([
+                        case, s, s_zk, s_rxk, "-", z, r_x, r_y, current_key,
+                        k, k_inv, "-", "-", "-", "-", _keys_text(keys), "-",
+                    ])
+                continue
 
             # ---------- case A / B / C / D row -----------------------
-            case = analysis.label
-            if case is None:
-                continue
             a = analysis.a
             if case == "D":
                 level = analysis.level
@@ -840,7 +782,7 @@ def _collect_rows(
             rows.append([
                 case, s, s_zk, s_rxk, s_zr, z, r_x, r_y, current_key, k, k_inv, a,
                 analysis.m1, analysis.m2 if case == "B" else "-", "-",
-                _keys_text(outcome.ab_keys), "-",
+                _keys_text(keys), "-",
             ])
 
         if progress and key_index % progress_step == 0:
@@ -850,9 +792,7 @@ def _collect_rows(
 
     # For a fixed key d, a signature is determined by the pair (k, z), so the
     # space is (n-1)^2 per key and (n-1)^3 over all possible keys -- the latter
-    # does not depend on --keys.  The original reported (n-1)^4 "where 4 =
-    # number of parameters (z, r, x, k^-1)", but r is a function of k and s is
-    # a function of the rest, so that count was not an upper bound on anything.
+    # does not depend on --keys.
     stats: Dict[str, object] = {
         "total_key_count": len(uniq_keys),
         "transaction_limit_per_key": transaction_limit_per_key,
@@ -875,8 +815,7 @@ def _import_class_forge():
     from THIS module at its top level.  Importing it lazily -- only once this
     module has finished initialising -- keeps that a one-way dependency and
     avoids an import cycle.  The fallback covers the flat layout (all files in
-    one folder); it used to repeat the package import and therefore failed with
-    ``No module named 'utils'`` exactly where it was needed.
+    one folder).
     """
     try:
         from utils.generate_found_classes import (  # type: ignore[import-not-found]
@@ -920,10 +859,9 @@ def _collect_forged_rows(
     secp256k1 is skipped with an explanatory message (it is infeasible there).
 
     Each row is counted once, under the class it was constructed for, so cases
-    C and D, HYP-001 and the E/A overlap are 0 by design.  The recovery lines
-    are measured: the attempts and keys of that class's public-only recovery
-    (1 attempt per A row, 2 per B row, 2-4 per E row).  They used to be
-    constants: attempts == rows, rejected == 0, per-class lines 0.
+    C and D, unclassified and HYP-001 are 0 by design.  The recovery lines are
+    measured: the attempts and keys of that class's public-only recovery
+    (1 attempt per A row, 1-2 per B row, 2-4 per E row).
 
     Returns ``(rows, stats, built, skipped)``: ``built`` maps each requested
     class to the number of rows made, ``skipped`` maps a class to the reason it
@@ -954,7 +892,7 @@ def _collect_forged_rows(
                     print(f"[stop] class {cls}: built {built[cls]} row(s), then: {exc}")
                 break
             rows.append(_forged_row(fs))
-            run_stats.add_constructed(cls, fs.recovered, fs.recovery_attempts)
+            run_stats.add(cls, fs.recovered, fs.recovery_attempts)
             built[cls] += 1
         else:
             print(f"[ok]   class {cls}: built {built[cls]} row(s).")
@@ -1043,9 +981,7 @@ def build_ec(args: argparse.Namespace) -> Secp256k1:
     """Curve object for the parsed arguments.
 
     Without ``--seed`` no rng is passed, so ``Secp256k1`` uses its defaults:
-    ``SystemRandom`` for z and k, ``secrets`` for keys.  The CLI used to pass
-    ``SystemRandom()`` explicitly, which made ``rng_is_explicit`` true and
-    contradicted that documented default.
+    ``SystemRandom`` for z and k, ``secrets`` for keys.
     """
     rng = random.Random(args.seed) if args.seed is not None else None
     return Secp256k1(_select_curve(args.curve_mode), rng=rng)
@@ -1066,9 +1002,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     if not 1 <= args.min_start_range < curve.n:
         raise ValueError("--min-start-range must be in [1, n-1]")
 
-    if args.demo:
-        # --demo is one round and nothing else.  It used to fall through into a
-        # full default run (5000 keys) and write a report as a side effect.
+    if args.demo:                 # one round, no report
         _print_once_demo(ec, args.sig_type)
         return
 

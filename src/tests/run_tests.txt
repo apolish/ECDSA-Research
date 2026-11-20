@@ -1,62 +1,62 @@
 ===================================================================================================================================================================
- ECDSA-Research regression suite   |   2026-11-20 19:57:51   |   python 3.13.18
+ ECDSA-Research regression suite   |   2026-11-20 21:51:57   |   python 3.13.18
 ===================================================================================================================================================================
  #   | Test                                                                    | Status | Time     | Detail                                                        
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | CURVE PARAMETERS AND PRIMITIVES                                         |        |          |                                                               
- 1   |   Test curve is a real curve of prime order                             |  PASS  | 0.144s   | #E = n = 99667 prime, (n-1)G = -G, G on curve                 
+ 1   |   Test curve is a real curve of prime order                             |  PASS  | 0.122s   | #E = n = 99667 prime, (n-1)G = -G, G on curve                 
  2   |   RFC 6979 nonce matches published secp256k1 vectors                    |  PASS  | 0.000s   | 3/3 published vectors                                         
  3   |   RIPEMD-160 fallback matches the official test vectors                 |  PASS  | 0.001s   | 4/4 official vectors, multi-block included                    
- 4   |   Signing verifies; an off-curve public key does not                    |  PASS  | 0.038s   | 2 curves OK, off-curve pubkey rejected                        
- 5   |   SEC encoding follows the field size instead of a hardcoded 32         |  PASS  | 0.000s   | 3-byte field -> 4 B, 32-byte field -> 33 B                    
- 6   |   Local modular square root replaces sympy on both moduli               |  PASS  | 0.107s   | 1232 values; Tonelli-Shanks: 52 QR, 48 non-QR                 
+ 4   |   Signing verifies; an off-curve public key does not                    |  PASS  | 0.028s   | 2 curves OK, off-curve pubkey rejected                        
+ 5   |   SEC encoding length follows the curve's field size                    |  PASS  | 0.000s   | 3-byte field -> 4 B, 32-byte field -> 33 B                    
+ 6   |   Modular square roots: all roots of a residue, none otherwise          |  PASS  | 0.087s   | 1232 values; Tonelli-Shanks: 52 QR, 48 non-QR                 
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | KEY RECOVERY FROM PUBLIC DATA                                           |        |          |                                                               
- 7   |   recover_x_from_s_zk round-trips; d passes the r-check, d+1 fails      |  PASS  | 0.594s   | 40 signatures, 0 mismatches, d+1 always rejected              
- 8   |   Case-B quadratic recovers a*m1 on both curves                         |  PASS  | 0.060s   | 100/100 roots contain the true s_zk                           
- 9   |   Case-E split is integral exactly for S = 1 or 2 (mod 4)               |  PASS  | 0.074s   | 19999 values of S; integral iff S%4 in (1,2)                  
- 10  |   Real case-A and case-E signatures yield a verified key                |  PASS  | 1.053s   | 368,448 scanned -> A x1, E x5, all verified                   
- 11  |   Case E is detected for S = 1 (mod 4) as well as S = 2 (mod 4)         |  PASS  | 6.563s   | S%4=1 seen 1x, S%4=2 seen 1x, both recovered                  
+ 7   |   recover_x_from_s_zk round-trips; d passes the r-check, d+1 fails      |  PASS  | 0.604s   | 40 signatures, 0 mismatches, d+1 always rejected              
+ 8   |   Case-B quadratic recovers a*m1 on both curves                         |  PASS  | 0.067s   | 100/100 roots contain the true s_zk                           
+ 9   |   Case-E split is integral exactly for S = 1 or 2 (mod 4)               |  PASS  | 0.082s   | 19999 values of S; integral iff S%4 in (1,2)                  
+ 10  |   Real case-A and case-E signatures yield a verified key                |  PASS  | 1.005s   | 368,448 scanned -> A x1, E x5, all verified                   
+ 11  |   Case E is detected for S = 1 (mod 4) as well as S = 2 (mod 4)         |  PASS  | 6.747s   | S%4=1 seen 1x, S%4=2 seen 1x, both recovered                  
  12  |   HYP-001 equals floor(a/w) == N - delta, and is stricter than {N, N-1} |  PASS  | 0.026s   | 20,000 triples: 0 deviations, fired 91 (0.46%), weak-only 127 
  13  |   Case-B quadratic returns exactly {s_zk, s_rxk}, by Vieta              |  PASS  | 0.047s   | 100 quadratics, both roots are {s_zk, s_rxk}                  
- 14  |   Per-class recovery counters sum to the reported aggregates            |  PASS  | 2.016s   | attempts 2 = A 0 + B 0 + E 2                                  
+ 14  |   Classes partition the run; recovery counters add up per class         |  PASS  | 2.194s   | 60,000 = 15,016 classified + 44,984 unclassified; verified 1  
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | EXACT NUMERIC FORMATTING                                                |        |          |                                                               
  15  |   Ratio rendering is exact and never uses exponent form                 |  PASS  | 0.052s   | 5,000 ratios up to 1e80, 0 rounding errors                    
  16  |   float is refused; str and Fraction floors are exact                   |  PASS  | 0.000s   | float refused; 4.999...9 -> 4 (float would give 5)            
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | COMMON-X SEARCH                                                         |        |          |                                                               
- 17  |   Every level window contains the s_zk it was built from                |  PASS  | 0.083s   | 800 windows, 0 misses                                         
+ 17  |   Every level window contains the s_zk it was built from                |  PASS  | 0.082s   | 800 windows, 0 misses                                         
  18  |   Window size is arithmetic; len() would overflow ssize_t               |  PASS  | 0.000s   | span ~2^253, len() would raise OverflowError                  
- 19  |   On-curve verification collapses the intersection to the true key      |  PASS  | 1.552s   | 25 runs: 0.56 impostors raw -> 0.00 verified                  
+ 19  |   On-curve verification collapses the intersection to the true key      |  PASS  | 1.554s   | 25 runs: 0.56 impostors raw -> 0.00 verified                  
  20  |   A secp256k1-scale window is rejected, not attempted                   |  PASS  | 0.000s   | ValueError raised before any enumeration                      
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | REPRODUCIBILITY AND REPORT OUTPUT                                       |        |          |                                                               
- 21  |   An explicit rng fixes the keys, not just z and k                      |  PASS  | 0.083s   | 2 curves: keys+signatures replay, seed 78 differs, range OK   
- 22  |   A seeded legacy run replays its messages, not only its keys           |  PASS  | 0.178s   | p2pkh+p2wpkh: preimages and (z, r, s) replay; seed 92 differs 
+ 21  |   An explicit rng fixes the keys, not just z and k                      |  PASS  | 0.147s   | 2 curves: keys+signatures replay, seed 78 differs, range OK   
+ 22  |   A seeded legacy run replays its messages, not only its keys           |  PASS  | 0.221s   | p2pkh+p2wpkh: preimages and (z, r, s) replay; seed 92 differs 
  23  |   Without an rng, keys still come from secrets rather than a seed       |  PASS  | 0.001s   | class and CLI default not explicit; 8-key draws differ        
- 24  |   Reports written in the same second get distinct filenames             |  PASS  | 0.001s   | 8 writes -> 8 distinct files, timestamp + 8-hex tag           
+ 24  |   Reports written in the same second get distinct filenames             |  PASS  | 0.002s   | 8 writes -> 8 distinct files, timestamp + 8-hex tag           
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | LEGACY TRANSACTION PREIMAGES                                            |        |          |                                                               
  25  |   Synthetic amounts never produce a negative or dust output             |  PASS  | 0.003s   | 2 sig types x 8 corner draws, min output 546 sat              
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | VERIFICATION AND PUBLIC-ONLY RECOVERY                                   |        |          |                                                               
- 26  |   A valid signature with z = 0 (mod n) verifies                         |  PASS  | 0.144s   | 6 z=0 signatures accepted, z=1 variants rejected              
- 27  |   The twin key passes verify_x_candidate; only x*G == Q is decisive     |  PASS  | 0.399s   | 20 signatures: twin passes r-check, fails x*G == Q            
- 28  |   Case-E recovery needs only the class, not the secret E1/E2 label      |  PASS  | 0.028s   | E1 x32, E2 x28: recovered from (z, r, s) + class              
+ 26  |   A valid signature with z = 0 (mod n) verifies                         |  PASS  | 0.162s   | 6 z=0 signatures accepted, z=1 variants rejected              
+ 27  |   The twin key passes verify_x_candidate; only x*G == Q is decisive     |  PASS  | 0.413s   | 20 signatures: twin passes r-check, fails x*G == Q            
+ 28  |   Case-E recovery needs only the class, not the secret E1/E2 label      |  PASS  | 0.050s   | E1 x32, E2 x28: recovered from (z, r, s) + class              
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | DIRECT CLASS CONSTRUCTION                                               |        |          |                                                               
- 29  |   Constructed A/B/E rows verify against Q and recover exactly x         |  PASS  | 0.172s   | 45 rows: ECDSA-valid, label re-derived, key == [x]            
- 30  |   Constructed reports: constructed classes only, recovery measured      |  PASS  | 0.144s   | A/B/E 12 each, C=D=0; attempts 72, rejected 36                
- 31  |   secp256k1: A and E are built and recovered, B is refused              |  PASS  | 0.079s   | A, E recovered on secp256k1; B refused with reason            
+ 29  |   Constructed A/B/E rows verify against Q and recover exactly x         |  PASS  | 0.170s   | 45 rows: ECDSA-valid, label re-derived, key == [x]            
+ 30  |   Constructed reports: constructed classes only, recovery measured      |  PASS  | 0.134s   | A/B/E 12 each, C=D=0; attempts 72, rejected 36                
+ 31  |   secp256k1: A and E are built and recovered, B is refused              |  PASS  | 0.076s   | A, E recovered on secp256k1; B refused with reason            
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | COMMAND-LINE ENTRY POINTS AND PORTABILITY                               |        |          |                                                               
- 32  |   All three scripts run from a flat folder, --tx-with-classes too       |  PASS  | 0.291s   | 3 scripts, flat folder: exit 0, 2 reports, self-check OK      
- 33  |   find_common_private_key --curve-mode legacy exits with an error       |  PASS  | 0.062s   | exit 1, refusal on stderr, no search run                      
- 34  |   --demo runs one round and writes nothing                              |  PASS  | 0.066s   | signature validated, 0 files written                          
+ 32  |   All three scripts run from a flat folder, --tx-with-classes too       |  PASS  | 0.295s   | 3 scripts, flat folder: exit 0, 2 reports, self-check OK      
+ 33  |   find_common_private_key --curve-mode legacy exits with an error       |  PASS  | 0.053s   | exit 1, refusal on stderr, no search run                      
+ 34  |   --demo runs one round and writes nothing                              |  PASS  | 0.058s   | signature validated, 0 files written                          
  35  |   rand_bytes works without Random.randbytes and replays seeded runs     |  PASS  | 0.000s   | seeded output == Random.randbytes on python 3.13              
 ===================================================================================================================================================================
- TOTAL 35  |  PASS 35  |  FAIL 0  |  ERROR 0  |  14.062s
+ TOTAL 35  |  PASS 35  |  FAIL 0  |  ERROR 0  |  14.487s
 ===================================================================================================================================================================
  RESULT: OK -- every check passed
 ===================================================================================================================================================================

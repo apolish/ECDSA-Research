@@ -7,9 +7,7 @@ verification for both the test and the legacy parameters.
 POINT REPRESENTATION
 ====================
 The point at infinity is represented by ``None`` -- and ONLY by ``None``.
-The original code had two competing sentinels (``None`` from ``point_add``
-and ``(0, 0)`` from ``scalar_multiply``); ``(0, 0)`` is not on either curve
-and leaked silently into callers.
+``(0, 0)`` is not on either curve and must never stand in for it.
 
 SIGNATURE TUPLE
 ===============
@@ -46,11 +44,9 @@ RANDOMNESS
 contaminated by the linear structure of MT19937.  Pass ``random.Random(seed)``
 explicitly when a reproducible run is wanted.
 
-An explicitly supplied ``rng`` drives EVERY draw, key generation included.
-Previously ``_generate_private_key`` always went to ``secrets``, so a seeded
-instance reproduced its ``z`` and ``k`` but not its keys -- ``--seed`` therefore
-promised a reproducible run and did not deliver one.  ``secrets`` is now used
-only as the default source, i.e. when no ``rng`` was passed.
+An explicitly supplied ``rng`` drives EVERY draw, key generation included, so
+a seeded instance reproduces its keys as well as its ``z`` and ``k``.  Without
+an explicit ``rng``, keys come from ``secrets``.
 """
 from __future__ import annotations
 
@@ -124,9 +120,7 @@ def compress_public_key(pub: Tuple[int, int], field_bytes: int = 32) -> bytes:
     """Return compressed SEC representation of a public key.
 
     ``field_bytes`` is the byte length of the coordinate field; 32 for
-    secp256k1.  The original code hardcoded 32, which silently produced a
-    malformed encoding for any curve with a different field size and would
-    raise ``OverflowError`` for a larger one.
+    secp256k1.
     """
     x, y = pub
     prefix = 0x02 | (y & 1)
@@ -350,10 +344,9 @@ def inverse_mod_safe(k: int, m: int) -> Optional[int]:
 def mod_sqrt_all(a: int, p: int) -> list[int]:
     """All square roots of ``a`` modulo the odd prime ``p``.
 
-    Returns ``[]`` when ``a`` is a quadratic non-residue.  Replaces the former
-    ``sympy.sqrt_mod`` dependency, which was undeclared and pulled in for this
-    single call.  Uses the ``p % 4 == 3`` shortcut when the modulus allows it
-    and Tonelli-Shanks otherwise.
+    Returns ``[]`` when ``a`` is a quadratic non-residue.  Uses the
+    ``p % 4 == 3`` shortcut when the modulus allows it and Tonelli-Shanks
+    otherwise.
 
     NOTE ON THE MODULUS.  ``p`` here is whatever modulus the caller passes, not
     necessarily a field prime.  The only caller in this repository is
@@ -362,11 +355,8 @@ def mod_sqrt_all(a: int, p: int) -> list[int]:
         secp17k1   p = 100003  (p % 4 == 3)   n = 99667  (n % 4 == 3)
         secp256k1  p % 4 == 3                 n % 4 == 1
 
-    So both branches are live in the shipped configuration: the shortcut for
-    the test curve and Tonelli-Shanks for case-B recovery on secp256k1.  A
-    previous revision of this docstring asserted the opposite -- that the
-    routine "operates on the field prime p" and that Tonelli-Shanks was
-    unexercised.  Both statements were wrong; ``n % 4 == 1`` for secp256k1.
+    So both branches are live: the shortcut for the test curve and
+    Tonelli-Shanks for case-B recovery on secp256k1.
     """
     a %= p
     if p == 2:
@@ -414,8 +404,7 @@ def recover_x_from_s_zk(s_zk: int, s: int, z: int, r: int, n: int) -> Optional[i
 
     Every input is public.  Returns ``None`` when the denominator is not
     invertible.  This is the single primitive behind every case-A/B/E
-    recovery; the original code re-derived it three times, once with ``k`` as
-    the name of a variable that actually held ``k^-1``.
+    recovery.
     """
     den_inv = inverse_mod_safe((r * s_zk) % n, n)
     if den_inv is None:
@@ -431,10 +420,10 @@ class Secp256k1:
 
         ``rng`` supplies the randomness used by "test" mode for z and k, and --
         when it is passed explicitly -- for key generation as well.  It defaults
-        to ``random.SystemRandom()``: the previous code used the module-level
-        ``random``, i.e. MT19937, whose known linear structure is a poor
-        foundation for statistics about "hidden structure" in the resulting
-        triples.  Pass ``random.Random(seed)`` for reproducibility.
+        to ``random.SystemRandom()``: the module-level ``random`` (MT19937) has
+        a known linear structure, a poor foundation for statistics about
+        "hidden structure" in the resulting triples.  Pass
+        ``random.Random(seed)`` for reproducibility.
 
         ``_rng_explicit`` records whether the caller supplied the source. Key
         generation consults it: an explicit rng is honoured (so a seeded run is
@@ -522,9 +511,6 @@ class Secp256k1:
         ``secrets`` otherwise. Both paths use the same rejection sampling over
         ``n.bit_length()`` bits, so the distribution is uniform on [1, n-1]
         either way -- only the source differs.
-
-        The old version always called ``secrets.randbits``, which made
-        ``--seed`` a half-promise: z and k replayed, keys did not.
         """
         n_bits = self._curve.n.bit_length()
         randbits = self._rng.getrandbits if self._rng_explicit else secrets.randbits
@@ -613,12 +599,10 @@ class Secp256k1:
     def hash_message(self, message: bytes, min_start_range: int) -> int:
         """Return integer hash of a message modulo curve order.
 
-        NOTE: in "test" mode z is randomised and NOT bound to the message.
-        That is deliberate for the test curve but means test mode is not a
-        signing oracle. Kept as-is; see README.
-
-        Test-mode z is uniform on ``[min_start_range, n-1]``.  The upper end
-        used to be ``randrange(..., n - 1)``, which can never return n-1.
+        NOTE: in "test" mode z is drawn at random, uniformly on
+        ``[min_start_range, n-1]``, and is NOT bound to the message.  That is
+        deliberate for the test curve, but it means test mode is not a signing
+        oracle.
         """
         if self._curve.mode == "test":
             return self._rng.randrange(min_start_range, self._curve.n)
@@ -629,11 +613,9 @@ class Secp256k1:
     def _k_candidates(self, private_key: int, z: int, min_start_range: int) -> Iterator[int]:
         """Yield nonce candidates appropriate for the curve mode.
 
-        ``min_start_range`` applies to test mode only.  The original code
-        applied it as a post-filter over the RFC 6979 stream as well, which is
-        a silent deviation from the specification: a conforming verifier
-        derives the first in-range candidate, not the first candidate above an
-        arbitrary floor.  It never fired at 256 bits, but it was wrong.
+        ``min_start_range`` applies to test mode only.  Legacy mode yields the
+        RFC 6979 stream unchanged: a conforming signer takes the first in-range
+        candidate, not the first one above an arbitrary floor.
         """
         if self._curve.mode == "legacy":
             yield from self._rfc6979_k_candidates(private_key, z)
@@ -717,25 +699,21 @@ class Secp256k1:
         z, r, _, s, _, _ = signature
         if not (1 <= r < self._curve.n and 1 <= s < self._curve.n):
             return False
-        # The original skipped public-key validation entirely and would happily
-        # "verify" against a point that is not on the curve. The on-curve guard
-        # below is what stops invalid-curve attacks (see test_G / TestPackage).
+        # The on-curve guard stops invalid-curve attacks: a point that is not
+        # on the curve is never "verified".
         if public_key is None or not self.is_on_curve(public_key):
             return False
-        # No separate subgroup/order check: both shipped curves have prime order
-        # n with cofactor 1, so an on-curve point other than O already has order
-        # exactly n. A prior revision ran ``scalar_multiply(self._curve.n,
-        # public_key)`` here and rejected on a non-None result -- but that is
-        # dead code: scalar_multiply short-circuits to None whenever k % n == 0,
-        # and n % n is 0, so the branch could never fire and validated nothing.
-        # Reuse on a cofactor > 1 curve would need a real check, e.g.
-        # ``scalar_multiply(n - 1, Q) == inverse_point(Q, p)``.
+        # No separate subgroup/order check: both curves have prime order n with
+        # cofactor 1, so an on-curve point other than O already has order n.
+        # (``scalar_multiply(n, Q)`` cannot serve as such a check: it returns
+        # None for any Q because of its k % n == 0 short-circuit.)  A curve with
+        # cofactor > 1 would need e.g. ``scalar_multiply(n - 1, Q) ==
+        # inverse_point(Q, p)``.
         w = self.inverse_mod(s, self._curve.n)
         u1 = (z * w) % self._curve.n
         u2 = (r * w) % self._curve.n
         # u1 == 0 whenever z == 0 (mod n); u1*G is then the point at infinity,
-        # which is a legitimate summand.  The previous early return on
-        # ``p1 is None`` rejected every such valid signature.
+        # which is a legitimate summand, not a reason to reject.
         p1 = self.scalar_multiply(u1, self._curve.g)
         p2 = self.scalar_multiply(u2, public_key)
         total = self.point_add(p1, p2)

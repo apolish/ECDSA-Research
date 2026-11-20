@@ -10,13 +10,13 @@
    2^256: gated 0.503 %   weak form 1.097 % (x2.18)   ungated 8.02 %
    2^512: gated 0.500 %   weak form 1.105 % (x2.21)   ungated 8.05 %
    [7.7s]
-2. Case-B formula event built directly (README Known issue 3)
+2. Case-B formula event built directly (label is not B)
    secp17k1: 200/200 keys recovered by the B formula; labels {'D': 200}; 4.5 nonce trials each; 1 ms each
-   secp256k1: 20/20 keys recovered by the B formula; labels {'D': 20}; 4.5 nonce trials each; 359 ms each
-   [7.5s]
+   secp256k1: 20/20 keys recovered by the B formula; labels {'D': 20}; 4.5 nonce trials each; 184 ms each
+   [3.8s]
 3. Class-A construction on secp256k1
    1.02 nonces per signature over 60; P = k*r odd 35, even 25
-   [4.9s]
+   [2.5s]
 4. Unverified common-key search over random 4-transaction bundles
    150 bundles: 3.81 impostors per bundle unverified, 0.00 verified
-   [17.3s]
+   [9.2s]

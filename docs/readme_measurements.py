@@ -8,8 +8,8 @@ section is seeded, so the output replays exactly.  Run time: about 1-2 minutes.
      code applies (N > 1, s > s_zk, s_zk even) and without it; the weak form
      floor(a/w) in {N, N-1}; and the law of q = floor(a/w) against
      Gauss-Kuzmin and against 1/(q(q+1)).
-  2. README Known issue 3: signatures on which the case-B *formula* recovers
-     the key although the label is not B, built on both curves.
+  2. Signatures on which the case-B *formula* recovers the key although the
+     label is not B (the B formula event), built on both curves.
   3. Class-A construction cost on secp256k1 (nonces per signature).
   4. Unverified common-key search: impostors per random 4-transaction bundle.
 """
@@ -68,7 +68,8 @@ def hyp001_null_model():
 
 
 def _b_formula_signature(ec, rnd, q_max=60):
-    """Known issue 3: s_zk * s_rxk == a * (s + s_zr) without steering P."""
+    """A signature with s_zk * s_rxk == a * (s + s_zr) (mod n), built
+    without steering P = k*r."""
     n = ec.curve.n
     trials = 0
     while True:
@@ -97,7 +98,7 @@ def _b_formula_signature(ec, rnd, q_max=60):
 
 
 def b_formula_construction():
-    print("2. Case-B formula event built directly (README Known issue 3)")
+    print("2. Case-B formula event built directly (label is not B)")
     for params, count in ((TEST_PARAMS, 200), (LEGACY_PARAMS, 20)):
         ec = Secp256k1(params, rng=random.Random(1))
         rnd = random.Random(99)

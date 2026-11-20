@@ -2023,14 +2023,13 @@ Transaction Limit Per Key: 1
 Total Transaction Count: 2000
 Signature Space Per Key: n/a (directly constructed)
 Signature Space All Keys: n/a (directly constructed)
-Transactions With Valid A: 1000
 Total Observed Cases: 2000
 Case A Count: 1000
 Case B Count: 0
 Case C Count: 0
 Case D Count: 0
 Case E Count: 1000
-Case E Overlapping A Cases: 0
+Unclassified Count: 0
 Hypothesis 001 Count: 0
 Recovery Attempts: 3664
 Recovery Verified: 2000
@@ -2041,5 +2040,4 @@ Recovery Attempts E: 2664
 Recovery Verified A: 1000
 Recovery Verified B: 0
 Recovery Verified E: 1000
-Recovered Signature Count: 2000
-Spent time: 93.325 sec.
+Spent time: 95.744 sec.
