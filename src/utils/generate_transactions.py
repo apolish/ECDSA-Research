@@ -35,6 +35,10 @@ signer's public key Q (which the sampling pipeline always has) the check is
 the decisive ``x*G == Q``; without it, ``verify_x_candidate`` is used, which
 also accepts the twin key -x - 2*z*r^-1.  Rejected candidates are counted, not
 printed as results.
+
+The two "Signature Space" lines of the statistics block give the size of the
+space the generator draws its signatures from -- one formula for both curves,
+see ``SignatureSpace``.
 """
 
 from __future__ import annotations
@@ -47,6 +51,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from fractions import Fraction
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -540,6 +545,92 @@ def rand_bytes(rng: random.Random, n: int) -> bytes:
 
 
 # ======================================================================
+# SIGNATURE SPACE  (the two "Signature Space" lines of a report)
+# ======================================================================
+@dataclass(frozen=True)
+class SignatureSpace:
+    """Size of the space the generator draws its signatures from.
+
+    ONE FORMULA FOR BOTH CURVES.  For a private key x the generator picks a
+    message hash z and a nonce k.  The pair fixes the report triple
+    ``(z, r, s)``, and the triple gives the nonce back as
+    ``k = s^-1 * (z + r*x)``, so every choice is a different signature:
+
+        Signature Space Per Key  = Nz * Nk
+        Signature Space All Keys = Nx * Nz * Nk
+
+    Nx counts the keys the generator can draw, Nz the hashes it can sign and
+    Nk the nonces it can pair with one (x, z).  They are the domains of the
+    signer itself (``Secp256k1.generate_unique_keys``, ``hash_message`` and
+    ``_k_candidates``), with m = --min-start-range:
+
+        size  test (secp17k1)                   legacy (secp256k1)
+        Nx    keys on [m, n-1]       -> n - m   keys on [m, n-1]        -> n - m
+        Nz    z uniform on [m, n-1]  -> n - m   z = dSHA256(...) mod n  -> n
+        Nk    k uniform on [m, n-1],            RFC 6979, k = f(x, z)   -> 1
+              independent of z       -> n - m
+
+    Per key / all keys are therefore (n-m)^2 / (n-m)^3 on the test curve and
+    n / (n-m)*n on secp256k1.  The closed forms differ because the nonce rule
+    differs, not the curve: an RFC 6979 signer on secp17k1 would give n, and a
+    random-nonce signer on secp256k1 (n-m)^2.
+
+    WHAT IS COUNTED.  A signature is the triple (z, r, s) of a report row, not
+    the bare pair (r, s).  "All Keys" counts (key, triple) pairs; in test mode
+    the twin key -x - 2*z*r^-1 emits the same triple with nonce n - k and is
+    counted once per key.  Both figures describe the generator, not the run:
+    they do not depend on --keys, --private-key or --tx-per-key.
+
+    EXACTNESS.  In legacy mode every z yields exactly one signature (RFC 6979
+    moves to its next candidate when r or s would be 0), so n is exact.  In
+    test mode a draw with r = 0 or s = 0 is redrawn, so a key emits slightly
+    fewer distinct triples than Nz * Nk: on secp17k1 two nonces have r = 0
+    (their point has x = n) and about one nonce per z gives s = 0, i.e. about
+    3/(n-m) = 3.0e-5 of the domain (checked by the regression suite).
+    """
+
+    keys: int              # Nx
+    hashes: int            # Nz
+    nonces_per_hash: int   # Nk
+
+    @property
+    def per_key(self) -> int:
+        """Nz * Nk: the (z, k) choices for one key."""
+        return self.hashes * self.nonces_per_hash
+
+    @property
+    def all_keys(self) -> int:
+        """Nx * Nz * Nk: the (x, z, k) choices over every drawable key."""
+        return self.keys * self.per_key
+
+
+def signature_space(curve: CurveParams, min_start_range: int) -> SignatureSpace:
+    """The generator's domain sizes on ``curve`` (see ``SignatureSpace``)."""
+    n = curve.n
+    if not 1 <= min_start_range < n:
+        raise ValueError(f"min_start_range must be in [1, n-1]; got {min_start_range}")
+    drawn = n - min_start_range          # size of [min_start_range, n-1]
+    if curve.mode == "test":             # z and k drawn independently
+        return SignatureSpace(keys=drawn, hashes=drawn, nonces_per_hash=drawn)
+    if curve.mode == "legacy":           # z = dSHA256 mod n, k = RFC 6979(x, z)
+        return SignatureSpace(keys=drawn, hashes=n, nonces_per_hash=1)
+    raise ValueError(f"unknown curve mode {curve.mode!r}")
+
+
+def _format_count(value: int) -> str:
+    """``value`` as ``f"{float(value):.6e}"`` prints it, computed exactly.
+
+    The integer is rounded once, half to even, from its exact value: no
+    float, hence no double rounding and no OverflowError above ~1.8e308.  The
+    exponent keeps float's style (``e+09``, ``e+154``).
+    """
+    if value == 0:
+        return f"{0.0:.6e}"
+    mantissa, exponent = f"{Decimal(value):.6e}".split("e")
+    return f"{mantissa}e{int(exponent):+03d}"
+
+
+# ======================================================================
 # REPORT WRITER
 # ======================================================================
 def _format_row(row: Sequence[object], widths: Sequence[int]) -> str:
@@ -790,15 +881,16 @@ def _collect_rows(
 
     elapsed = time.time() - start
 
-    # For a fixed key d, a signature is determined by the pair (k, z), so the
-    # space is (n-1)^2 per key and (n-1)^3 over all possible keys -- the latter
-    # does not depend on --keys.
+    # The generator's (key, z, k) domain: Nz*Nk per key, Nx*Nz*Nk over every
+    # key it can draw -- one formula for both curves (see SignatureSpace).  It
+    # describes the generator, not this run, so --keys does not enter it.
+    space = signature_space(curve, min_start_range)
     stats: Dict[str, object] = {
         "total_key_count": len(uniq_keys),
         "transaction_limit_per_key": transaction_limit_per_key,
         "total_transaction_count": generated_tx_count,
-        "signature_space_per_key": f"{float((n - 1) ** 2):.6e}",
-        "signature_space_all_keys": f"{float((n - 1) ** 3):.6e}",
+        "signature_space_per_key": _format_count(space.per_key),
+        "signature_space_all_keys": _format_count(space.all_keys),
     }
     stats.update(run_stats.as_dict())
     stats["spent_time_sec"] = elapsed

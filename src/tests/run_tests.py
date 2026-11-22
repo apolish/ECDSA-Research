@@ -56,7 +56,7 @@ from utils.generate_transactions import (  # noqa: E402
     _detect_half_difference_split, _half_difference_parts, _guesses_case_b,
     _check_hypothesis_001, _format_ratio, recover_private_keys, _write_report,
     _collect_rows, _build_report_config, _build_message, _collect_forged_rows,
-    build_ec, parse_args, rand_bytes,
+    build_ec, parse_args, rand_bytes, signature_space, _format_count,
 )
 from utils.generate_found_classes import (  # noqa: E402
     ECDSAClassGenerator, ClassConstructionError, classify,
@@ -971,12 +971,167 @@ class TestCommandLine(ResearchTestCase):
                   f"{sys.version_info[0]}.{sys.version_info[1]}")
 
 
+# ======================================================================
+# SIGNATURE SPACE
+# ======================================================================
+class TestSignatureSpace(ResearchTestCase):
+    GROUP = "Signature space in the statistics block"
+    TEST_ORDER = (
+        "test_signature_space_is_one_formula",
+        "test_test_curve_signer_draws_the_counted_domain",
+        "test_test_curve_redraws_remove_3e_5_of_the_domain",
+        "test_legacy_signs_one_nonce_per_hash",
+        "test_report_prints_the_signature_space",
+    )
+
+    def test_signature_space_is_one_formula(self):
+        """Signature space: one formula on both curves, exact formatting"""
+        # Nz*Nk per key and Nx*Nz*Nk over all keys on both curves.  Only the
+        # domain sizes differ, and they follow the nonce rule, not the curve.
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            n = params.n
+            for m in (1, 100, n - 1):
+                sp = signature_space(params, m)
+                self.assertEqual(sp.keys, n - m)                  # keys on [m, n-1]
+                if params.mode == "test":                         # z, k on [m, n-1]
+                    self.assertEqual((sp.hashes, sp.nonces_per_hash), (n - m, n - m))
+                else:                                 # z = dSHA256 mod n, RFC 6979
+                    self.assertEqual((sp.hashes, sp.nonces_per_hash), (n, 1))
+                self.assertEqual(sp.per_key, sp.hashes * sp.nonces_per_hash)
+                self.assertEqual(sp.all_keys, sp.keys * sp.per_key)
+            with self.assertRaises(ValueError):
+                signature_space(params, n)
+        # The report figures for the default --min-start-range 100.
+        pinned = {
+            TEST_PARAMS.name: ("9.913587e+09", "9.870662e+14"),
+            LEGACY_PARAMS.name: ("1.157921e+77", "1.340781e+154"),
+        }
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            sp = signature_space(params, 100)
+            self.assertEqual((_format_count(sp.per_key), _format_count(sp.all_keys)),
+                             pinned[params.name])
+        # Exact formatting: what float prints wherever float is exact, and no
+        # OverflowError beyond the float range.
+        rnd = random.Random(36)
+        for _ in range(2_000):
+            value = rnd.randrange(1, 2 ** 53)
+            self.assertEqual(_format_count(value), f"{float(value):.6e}")
+        self.assertEqual(_format_count(10 ** 400), "1.000000e+400")
+        self.note("test (n-m)^2 / (n-m)^3, legacy n / (n-m)*n; e+09 .. e+400")
+
+    def test_test_curve_signer_draws_the_counted_domain(self):
+        """Test curve: the signer draws exactly the counted (z, k) domain"""
+        # m = n - 30 shrinks every domain to 30 values, so it can be exhausted.
+        # Each emitted (z, r, s) gives its own k back, and the only (z, k)
+        # pairs never emitted are those with s = 0.
+        params = TEST_PARAMS
+        n, m = params.n, params.n - 30
+        sp = signature_space(params, m)
+        ec = Secp256k1(params, rng=random.Random(37))
+        self.assertEqual(sorted(ec.generate_unique_keys(sp.keys, m)), list(range(m, n)))
+        r_of = {k: ec.scalar_multiply(k, params.g)[0] % n for k in range(m, n)}
+        # Pick the key so that one pair of the domain has s = 0.
+        k0 = next(k for k in range(m, n) if r_of[k])
+        z0 = m + 2
+        x = (-z0 * pow(r_of[k0], -1, n)) % n
+        valid = {(z, k) for z in range(m, n) for k in range(m, n)
+                 if r_of[k] and (z + r_of[k] * x) % n}
+        emitted = set()
+        for _ in range(15_000):
+            z, r, _r_y, s, k, _k_inv = ec.sign_message(x, b"", m)
+            self.assertTrue(m <= z < n and m <= k < n)
+            self.assertEqual(k, (z + r * x) * pow(s, -1, n) % n)
+            emitted.add((z, k))
+        rejected = sp.per_key - len(valid)
+        self.assertEqual(emitted, valid)
+        self.assertNotIn((z0, k0), emitted)
+        self.assertGreaterEqual(rejected, 1)
+        self.note(f"m = n-30: {len(valid)} of {sp.per_key} (z, k) emitted, "
+                  f"{rejected} with s = 0")
+
+    def test_test_curve_redraws_remove_3e_5_of_the_domain(self):
+        """Test curve: r = 0 / s = 0 redraws remove ~3.0e-5 of the domain"""
+        # Two nonces have r = 0 (their point has x = n, and n < p), and about
+        # one nonce per z gives s = 0, so a key emits about 3/(n-m) fewer
+        # distinct triples than Nz*Nk.  Exact count for one key, m = 100.
+        params = TEST_PARAMS
+        n, m = params.n, 100
+        sp = signature_space(params, m)
+        ec = Secp256k1(params)
+        xs, point = [0], None                  # xs[k] = (k*G).x
+        for _ in range(1, n):
+            point = ec.point_add(point, params.g)
+            xs.append(point[0])
+        zero_r = [k for k in range(m, n) if xs[k] % n == 0]
+        self.assertEqual(len(zero_r), 2)
+        self.assertTrue(all(xs[k] == n for k in zero_r))
+        key = 12_345
+        s_zero = sum(1 for k in range(m, n)
+                     if xs[k] % n and (-(xs[k] % n) * key) % n >= m)
+        rejected = len(zero_r) * sp.hashes + s_zero
+        fraction = rejected / sp.per_key
+        self.assertAlmostEqual(fraction * (n - m), 3, delta=0.01)
+        self.note(f"r=0: 2 nonces, s=0: {s_zero:,} pairs -> {fraction:.2e} of Nz*Nk")
+
+    def test_legacy_signs_one_nonce_per_hash(self):
+        """secp256k1: one nonce per hash, so the space per key is n"""
+        # RFC 6979 derives k from (x, z): neither the run's rng nor
+        # --min-start-range reaches it, and z = dSHA256(preimage) mod n is not
+        # confined to [m, n-1].  Hence Nk = 1 and Nz = n.
+        params = LEGACY_PARAMS
+        n = params.n
+        d = random.Random(39).randrange(1, n)
+        a = Secp256k1(params, rng=random.Random(1))
+        b = Secp256k1(params, rng=random.Random(2))
+        below_floor = 0
+        for i in range(5):
+            msg = f"message {i}".encode()
+            sig = a.sign_message(d, msg, 1)
+            self.assertEqual(b.sign_message(d, msg, n - 1), sig)  # other rng, other m
+            digest = hashlib.sha256(hashlib.sha256(msg).digest()).digest()
+            self.assertEqual(sig[0], int.from_bytes(digest, "big") % n)
+            below_floor += sig[0] < n - 1
+        self.assertEqual(below_floor, 5)
+        sp = signature_space(params, 100)
+        self.assertEqual((sp.per_key, sp.all_keys), (n, (n - 100) * n))
+        self.note("same (x, z) -> same k under 2 rngs and 2 floors; per key = n")
+
+    def test_report_prints_the_signature_space(self):
+        """Report: Signature Space lines follow the formula, not --keys"""
+        for params in (TEST_PARAMS, LEGACY_PARAMS):
+            sp = signature_space(params, 100)
+            expected = (_format_count(sp.per_key), _format_count(sp.all_keys))
+            for keys, tx, fixed in ((1, 1, 0), (3, 2, 0), (1, 2, 4_242)):
+                _rows, stats = _collect_rows(
+                    ec=Secp256k1(params, rng=random.Random(40)),
+                    cfg=_build_report_config(params),
+                    total_key_count=keys,
+                    private_key=fixed,
+                    transaction_limit_per_key=tx,
+                    output_count=0,
+                    d_case_digit=-1,
+                    min_start_range=100,
+                    progress=False,
+                )
+                self.assertEqual((stats["signature_space_per_key"],
+                                  stats["signature_space_all_keys"]), expected)
+            with tempfile.TemporaryDirectory() as tmp:
+                path = _write_report(params, [], stats, "p2pkh", tmp)
+                with open(path, encoding="utf-8") as fh:
+                    text = fh.read()
+            self.assertIn(f"Signature Space Per Key: {expected[0]}\n", text)
+            self.assertIn(f"Signature Space All Keys: {expected[1]}\n", text)
+        self.note("2 curves x 3 runs (keys, tx per key, fixed key): same lines")
+
+
 SUITE: Tuple[type, ...] = (
     # tests 1-25
     TestCurve, TestRecovery, TestFormatting, TestSearch, TestReproducibility,
     TestLegacyPreimages,
     # tests 26-35
     TestVerification, TestConstruction, TestCommandLine,
+    # tests 36-40
+    TestSignatureSpace,
 )
 
 

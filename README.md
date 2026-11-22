@@ -94,7 +94,7 @@ Python **3.8 or newer**. Everything under `src/` is standard library only — no
 ```bash
 git clone <this-repo> && cd ECDSA-Research
 
-python3 src/tests/run_tests.py                   # 35 checks, tabular output
+python3 src/tests/run_tests.py                   # 40 checks, tabular output
 python3 src/utils/generate_transactions.py       # test curve, 5000 keys -> data/
 python3 src/utils/find_common_private_key.py     # bundled 4-transaction demo
 ```
@@ -260,8 +260,8 @@ shift the table. Unclassified signatures are counted but not printed.
 Total Key Count: 5000
 Transaction Limit Per Key: 2000
 Total Transaction Count: 10000000
-Signature Space Per Key: 9.933312e+09
-Signature Space All Keys: 9.900134e+14
+Signature Space Per Key: 9.913587e+09
+Signature Space All Keys: 9.870662e+14
 Total Observed Cases: 2499947
 Case A Count: 27
 Case B Count: 0
@@ -286,9 +286,54 @@ Case D0 Count: 175082
 The figures are those of `data/transaction_list_20261120214204_d7286821.txt`
 (5,000 keys × 2,000 signatures).
 
-`Signature Space Per Key` is `(n−1)²`: for a fixed key a signature is determined
-by the pair `(k, z)`. `Signature Space All Keys` is `(n−1)³` — all possible
-keys, independent of `--keys`.
+#### Signature space
+
+`Signature Space Per Key` and `Signature Space All Keys` give the size of the
+space the generator draws its signatures from. They describe the generator,
+not the run: `--keys`, `--private-key` and `--tx-per-key` do not enter them.
+For a key `x` the generator picks a message hash `z` and a nonce `k`; the pair
+fixes the row's triple `(z, r, s)`, and the triple gives the nonce back as
+`k = s⁻¹·(z + r·x)`, so every choice is a different signature. One formula
+serves both curves:
+
+```text
+Signature Space Per Key  = Nz · Nk
+Signature Space All Keys = Nx · Nz · Nk
+
+Nx   keys the generator can draw
+Nz   message hashes it can sign
+Nk   nonces it can pair with one (key, hash)
+```
+
+The sizes are the signer's own domains, with `m = --min-start-range`:
+
+| | `test` (secp17k1) | `legacy` (secp256k1) |
+| --- | --- | --- |
+| Nx | keys on `[m, n−1]` → `n − m` | keys on `[m, n−1]` → `n − m` |
+| Nz | `z` uniform on `[m, n−1]` → `n − m` | `z = dSHA256(preimage) mod n` → `n` |
+| Nk | `k` uniform on `[m, n−1]`, independent of `z` → `n − m` | RFC 6979, `k = f(x, z)` → `1` |
+| Per Key | `(n − m)²` = 9.913587e+09 | `n` = 1.157921e+77 |
+| All Keys | `(n − m)³` = 9.870662e+14 | `(n − m)·n` = 1.340781e+154 |
+
+The figures are for the default `m = 100`. The closed forms differ because the
+nonce rule differs, not the curve: an RFC 6979 signer on secp17k1 would give
+`n`, and a random-nonce signer on secp256k1 `(n − m)²`.
+
+* **What is counted.** A signature is the triple `(z, r, s)` of a report row,
+  not the bare pair `(r, s)`: for one key, `(k, z)` and `(n − k, −z − 2·r·x)`
+  give the same `(r, s)`. `All Keys` counts (key, triple) pairs; in `test` mode
+  the [twin key](#the-twin-key) emits the same triple with nonce `n − k`, and
+  it is counted once per key.
+* **Exactness.** In `legacy` mode every `z` yields exactly one signature
+  (RFC 6979 moves to its next candidate when `r` or `s` would be 0), so `n` is
+  exact. In `test` mode a draw with `r = 0` or `s = 0` is redrawn, so a key
+  emits slightly fewer distinct triples than `Nz · Nk`: on secp17k1 two nonces
+  have `r = 0` (their point has `x = n`, and `n < p`) and about one nonce per
+  `z` gives `s = 0` — 3.0·10⁻⁵ of the domain, visible from the fifth
+  significant digit (test 38).
+* **Not the configuration counts.** The `(n−1)²` and `(n−1)³` of
+  [Measured results](#measured-results) count configurations of the uniform
+  model over `[1, n−1]` (`docs/exact_class_counts.py`), not the generator.
 
 Every signature is counted exactly once — in one class or as unclassified — so
 the counts add up:
@@ -464,57 +509,64 @@ value each test actually measured rather than a column of "ok" (full last run:
  #   | Test                                                                    | Status | Time     | Detail
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | CURVE PARAMETERS AND PRIMITIVES                                         |        |          |
- 1   |   Test curve is a real curve of prime order                             |  PASS  | 0.122s   | #E = n = 99667 prime, (n-1)G = -G, G on curve
+ 1   |   Test curve is a real curve of prime order                             |  PASS  | 0.073s   | #E = n = 99667 prime, (n-1)G = -G, G on curve
  2   |   RFC 6979 nonce matches published secp256k1 vectors                    |  PASS  | 0.000s   | 3/3 published vectors
- 3   |   RIPEMD-160 fallback matches the official test vectors                 |  PASS  | 0.001s   | 4/4 official vectors, multi-block included
- 4   |   Signing verifies; an off-curve public key does not                    |  PASS  | 0.028s   | 2 curves OK, off-curve pubkey rejected
+ 3   |   RIPEMD-160 fallback matches the official test vectors                 |  PASS  | 0.000s   | 4/4 official vectors, multi-block included
+ 4   |   Signing verifies; an off-curve public key does not                    |  PASS  | 0.018s   | 2 curves OK, off-curve pubkey rejected
  5   |   SEC encoding length follows the curve's field size                    |  PASS  | 0.000s   | 3-byte field -> 4 B, 32-byte field -> 33 B
- 6   |   Modular square roots: all roots of a residue, none otherwise          |  PASS  | 0.087s   | 1232 values; Tonelli-Shanks: 52 QR, 48 non-QR
+ 6   |   Modular square roots: all roots of a residue, none otherwise          |  PASS  | 0.054s   | 1232 values; Tonelli-Shanks: 52 QR, 48 non-QR
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | KEY RECOVERY FROM PUBLIC DATA                                           |        |          |
- 7   |   recover_x_from_s_zk round-trips; d passes the r-check, d+1 fails      |  PASS  | 0.604s   | 40 signatures, 0 mismatches, d+1 always rejected
- 8   |   Case-B quadratic recovers a*m1 on both curves                         |  PASS  | 0.067s   | 100/100 roots contain the true s_zk
- 9   |   Case-E split is integral exactly for S = 1 or 2 (mod 4)               |  PASS  | 0.082s   | 19999 values of S; integral iff S%4 in (1,2)
- 10  |   Real case-A and case-E signatures yield a verified key                |  PASS  | 1.005s   | 368,448 scanned -> A x1, E x5, all verified
- 11  |   Case E is detected for S = 1 (mod 4) as well as S = 2 (mod 4)         |  PASS  | 6.747s   | S%4=1 seen 1x, S%4=2 seen 1x, both recovered
- 12  |   HYP-001 equals floor(a/w) == N - delta, and is stricter than {N, N-1} |  PASS  | 0.026s   | 20,000 triples: 0 deviations, fired 91 (0.46%), weak-only 127
- 13  |   Case-B quadratic returns exactly {s_zk, s_rxk}, by Vieta              |  PASS  | 0.047s   | 100 quadratics, both roots are {s_zk, s_rxk}
- 14  |   Classes partition the run; recovery counters add up per class         |  PASS  | 2.194s   | 60,000 = 15,016 classified + 44,984 unclassified; verified 1
+ 7   |   recover_x_from_s_zk round-trips; d passes the r-check, d+1 fails      |  PASS  | 0.271s   | 40 signatures, 0 mismatches, d+1 always rejected
+ 8   |   Case-B quadratic recovers a*m1 on both curves                         |  PASS  | 0.031s   | 100/100 roots contain the true s_zk
+ 9   |   Case-E split is integral exactly for S = 1 or 2 (mod 4)               |  PASS  | 0.027s   | 19999 values of S; integral iff S%4 in (1,2)
+ 10  |   Real case-A and case-E signatures yield a verified key                |  PASS  | 0.578s   | 368,448 scanned -> A x1, E x5, all verified
+ 11  |   Case E is detected for S = 1 (mod 4) as well as S = 2 (mod 4)         |  PASS  | 3.993s   | S%4=1 seen 1x, S%4=2 seen 1x, both recovered
+ 12  |   HYP-001 equals floor(a/w) == N - delta, and is stricter than {N, N-1} |  PASS  | 0.017s   | 20,000 triples: 0 deviations, fired 91 (0.46%), weak-only 127
+ 13  |   Case-B quadratic returns exactly {s_zk, s_rxk}, by Vieta              |  PASS  | 0.031s   | 100 quadratics, both roots are {s_zk, s_rxk}
+ 14  |   Classes partition the run; recovery counters add up per class         |  PASS  | 1.179s   | 60,000 = 15,016 classified + 44,984 unclassified; verified 1
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | EXACT NUMERIC FORMATTING                                                |        |          |
- 15  |   Ratio rendering is exact and never uses exponent form                 |  PASS  | 0.052s   | 5,000 ratios up to 1e80, 0 rounding errors
+ 15  |   Ratio rendering is exact and never uses exponent form                 |  PASS  | 0.035s   | 5,000 ratios up to 1e80, 0 rounding errors
  16  |   float is refused; str and Fraction floors are exact                   |  PASS  | 0.000s   | float refused; 4.999...9 -> 4 (float would give 5)
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | COMMON-X SEARCH                                                         |        |          |
- 17  |   Every level window contains the s_zk it was built from                |  PASS  | 0.082s   | 800 windows, 0 misses
+ 17  |   Every level window contains the s_zk it was built from                |  PASS  | 0.054s   | 800 windows, 0 misses
  18  |   Window size is arithmetic; len() would overflow ssize_t               |  PASS  | 0.000s   | span ~2^253, len() would raise OverflowError
- 19  |   On-curve verification collapses the intersection to the true key      |  PASS  | 1.554s   | 25 runs: 0.56 impostors raw -> 0.00 verified
+ 19  |   On-curve verification collapses the intersection to the true key      |  PASS  | 0.904s   | 25 runs: 0.56 impostors raw -> 0.00 verified
  20  |   A secp256k1-scale window is rejected, not attempted                   |  PASS  | 0.000s   | ValueError raised before any enumeration
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | REPRODUCIBILITY AND REPORT OUTPUT                                       |        |          |
- 21  |   An explicit rng fixes the keys, not just z and k                      |  PASS  | 0.147s   | 2 curves: keys+signatures replay, seed 78 differs, range OK
- 22  |   A seeded legacy run replays its messages, not only its keys           |  PASS  | 0.221s   | p2pkh+p2wpkh: preimages and (z, r, s) replay; seed 92 differs
+ 21  |   An explicit rng fixes the keys, not just z and k                      |  PASS  | 0.066s   | 2 curves: keys+signatures replay, seed 78 differs, range OK
+ 22  |   A seeded legacy run replays its messages, not only its keys           |  PASS  | 0.137s   | p2pkh+p2wpkh: preimages and (z, r, s) replay; seed 92 differs
  23  |   Without an rng, keys still come from secrets rather than a seed       |  PASS  | 0.001s   | class and CLI default not explicit; 8-key draws differ
- 24  |   Reports written in the same second get distinct filenames             |  PASS  | 0.002s   | 8 writes -> 8 distinct files, timestamp + 8-hex tag
+ 24  |   Reports written in the same second get distinct filenames             |  PASS  | 0.001s   | 8 writes -> 8 distinct files, timestamp + 8-hex tag
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | LEGACY TRANSACTION PREIMAGES                                            |        |          |
- 25  |   Synthetic amounts never produce a negative or dust output             |  PASS  | 0.003s   | 2 sig types x 8 corner draws, min output 546 sat
+ 25  |   Synthetic amounts never produce a negative or dust output             |  PASS  | 0.002s   | 2 sig types x 8 corner draws, min output 546 sat
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | VERIFICATION AND PUBLIC-ONLY RECOVERY                                   |        |          |
- 26  |   A valid signature with z = 0 (mod n) verifies                         |  PASS  | 0.162s   | 6 z=0 signatures accepted, z=1 variants rejected
- 27  |   The twin key passes verify_x_candidate; only x*G == Q is decisive     |  PASS  | 0.413s   | 20 signatures: twin passes r-check, fails x*G == Q
- 28  |   Case-E recovery needs only the class, not the secret E1/E2 label      |  PASS  | 0.050s   | E1 x32, E2 x28: recovered from (z, r, s) + class
+ 26  |   A valid signature with z = 0 (mod n) verifies                         |  PASS  | 0.094s   | 6 z=0 signatures accepted, z=1 variants rejected
+ 27  |   The twin key passes verify_x_candidate; only x*G == Q is decisive     |  PASS  | 0.258s   | 20 signatures: twin passes r-check, fails x*G == Q
+ 28  |   Case-E recovery needs only the class, not the secret E1/E2 label      |  PASS  | 0.017s   | E1 x32, E2 x28: recovered from (z, r, s) + class
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | DIRECT CLASS CONSTRUCTION                                               |        |          |
- 29  |   Constructed A/B/E rows verify against Q and recover exactly x         |  PASS  | 0.170s   | 45 rows: ECDSA-valid, label re-derived, key == [x]
- 30  |   Constructed reports: constructed classes only, recovery measured      |  PASS  | 0.134s   | A/B/E 12 each, C=D=0; attempts 72, rejected 36
- 31  |   secp256k1: A and E are built and recovered, B is refused              |  PASS  | 0.076s   | A, E recovered on secp256k1; B refused with reason
+ 29  |   Constructed A/B/E rows verify against Q and recover exactly x         |  PASS  | 0.108s   | 45 rows: ECDSA-valid, label re-derived, key == [x]
+ 30  |   Constructed reports: constructed classes only, recovery measured      |  PASS  | 0.098s   | A/B/E 12 each, C=D=0; attempts 72, rejected 36
+ 31  |   secp256k1: A and E are built and recovered, B is refused              |  PASS  | 0.053s   | A, E recovered on secp256k1; B refused with reason
 -----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
      | COMMAND-LINE ENTRY POINTS AND PORTABILITY                               |        |          |
- 32  |   All three scripts run from a flat folder, --tx-with-classes too       |  PASS  | 0.295s   | 3 scripts, flat folder: exit 0, 2 reports, self-check OK
- 33  |   find_common_private_key --curve-mode legacy exits with an error       |  PASS  | 0.053s   | exit 1, refusal on stderr, no search run
- 34  |   --demo runs one round and writes nothing                              |  PASS  | 0.058s   | signature validated, 0 files written
+ 32  |   All three scripts run from a flat folder, --tx-with-classes too       |  PASS  | 0.183s   | 3 scripts, flat folder: exit 0, 2 reports, self-check OK
+ 33  |   find_common_private_key --curve-mode legacy exits with an error       |  PASS  | 0.042s   | exit 1, refusal on stderr, no search run
+ 34  |   --demo runs one round and writes nothing                              |  PASS  | 0.047s   | signature validated, 0 files written
  35  |   rand_bytes works without Random.randbytes and replays seeded runs     |  PASS  | 0.000s   | seeded output == Random.randbytes on python 3.13
+-----+-------------------------------------------------------------------------+--------+----------+---------------------------------------------------------------
+     | SIGNATURE SPACE IN THE STATISTICS BLOCK                                 |        |          |
+ 36  |   Signature space: one formula on both curves, exact formatting         |  PASS  | 0.003s   | test (n-m)^2 / (n-m)^3, legacy n / (n-m)*n; e+09 .. e+400
+ 37  |   Test curve: the signer draws exactly the counted (z, k) domain        |  PASS  | 0.322s   | m = n-30: 899 of 900 (z, k) emitted, 1 with s = 0
+ 38  |   Test curve: r = 0 / s = 0 redraws remove ~3.0e-5 of the domain        |  PASS  | 0.076s   | r=0: 2 nonces, s=0: 99,465 pairs -> 3.01e-05 of Nz*Nk
+ 39  |   secp256k1: one nonce per hash, so the space per key is n              |  PASS  | 0.057s   | same (x, z) -> same k under 2 rngs and 2 floors; per key = n
+ 40  |   Report: Signature Space lines follow the formula, not --keys          |  PASS  | 0.070s   | 2 curves x 3 runs (keys, tx per key, fixed key): same lines
 ```
 
 Independently confirmed by the suite: the test curve's group order equals `n`,
@@ -522,7 +574,10 @@ Independently confirmed by the suite: the test curve's group order equals `n`,
 published secp256k1 test vectors; the RIPEMD-160 fallback matches the official
 vectors including a multi-block input; both branches of the modular square root
 (including Tonelli–Shanks, which case-B recovery uses on secp256k1) return the
-roots of residues and nothing for non-residues.
+roots of residues and nothing for non-residues; and the two `Signature Space`
+lines equal the domain the signer actually draws from on both curves — on
+secp17k1 by exhausting a reduced domain, on secp256k1 by the RFC 6979 nonce
+being fixed by `(x, z)` (tests 36–40).
 
 ---
 

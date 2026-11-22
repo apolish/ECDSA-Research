@@ -2178,8 +2178,8 @@ Statistics:
 Total Key Count: 5000
 Transaction Limit Per Key: 2000
 Total Transaction Count: 10000000
-Signature Space Per Key: 9.933312e+09
-Signature Space All Keys: 9.900134e+14
+Signature Space Per Key: 9.913587e+09
+Signature Space All Keys: 9.870662e+14
 Total Observed Cases: 2499947
 Case A Count: 27
 Case B Count: 0
