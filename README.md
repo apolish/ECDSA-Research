@@ -39,6 +39,7 @@ ECDSA-Research/
 │   └── transaction_list_20261120215029_8ce2f082.txt   # legacy curve (100K tx sampled;     _,_,_,D,_ cases)
 ├── docs/
 │   ├── ECDSA_coincidence_classes.pdf                  # see "Current publications"
+│   ├── ECDSA_coincidence_classes_extended.pdf         # see "Current publications"
 │   ├── null_model_experiment.py, .txt                 # class census, real vs null model; output
 │   ├── exact_class_counts.py, .txt                    # exhaustive class counts quoted below, output
 │   └── readme_measurements.py, .txt                   # sampled measurements quoted below, output
@@ -745,6 +746,12 @@ Separation
 
 ```text
 https://doi.org/10.6084/m9.figshare.33235473
+```
+
+On the Public-Actionability of Algebraic Coincidences in ECDSA Signatures
+
+```text
+https://doi.org/10.6084/m9.figshare.35124685
 ```
 
 ---
