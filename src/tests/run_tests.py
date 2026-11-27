@@ -226,6 +226,7 @@ class TestRecovery(ResearchTestCase):
         "test_hypothesis_001_matches_definition",
         "test_case_b_roots_return_the_unordered_pair",
         "test_recovery_counters_are_consistent",
+        "test_d_case_digit_scopes_rows_and_hypothesis",
     )
 
     def test_recover_and_verify_public_only(self):
@@ -469,6 +470,54 @@ class TestRecovery(ResearchTestCase):
         self.note(f"{stats['total_transaction_count']:,} = {observed:,} classified"
                   f" + {stats['unclassified_count']:,} unclassified; "
                   f"verified {stats['recovery_verified']}")
+
+
+    def test_d_case_digit_scopes_rows_and_hypothesis(self):
+        """--d-case-digit prints one D level; HYP-001 count = marked rows"""
+        def run(digit):
+            return _collect_rows(
+                ec=Secp256k1(TEST_PARAMS, rng=random.Random(21)),
+                cfg=_build_report_config(TEST_PARAMS),
+                total_key_count=50,
+                private_key=0,
+                transaction_limit_per_key=400,
+                output_count=10**6,     # no truncation: every in-group row
+                d_case_digit=digit,
+                min_start_range=1000,
+                progress=False,
+            )
+
+        def marked(rows):
+            return sum(1 for row in rows if row[-1] == "HYP-001")
+
+        all_rows, all_stats = run(-1)
+        self.assertEqual(all_stats["hypothesis_001_count"], marked(all_rows))
+        self.assertGreater(all_stats["hypothesis_001_count"], 0)
+        by_level: Dict[str, int] = {}
+        for row in all_rows:
+            if row[-1] == "HYP-001":
+                by_level[row[0]] = by_level.get(row[0], 0) + 1
+        checked = []
+        # 0 and 1 are below the gate N > 1 (never flagged); 2 and 3 fire.
+        for digit in (0, 1, 2, 3):
+            rows, stats = run(digit)
+            label = f"D{digit}"
+            self.assertTrue(rows)
+            # Only the selected group is printed: no A/B/C/E or other D level.
+            self.assertEqual({row[0] for row in rows}, {label})
+            self.assertEqual(len(rows), stats["case_D_level_counts"][digit])
+            # The counter is scoped to the group and agrees with the rows.
+            self.assertEqual(stats["hypothesis_001_count"], marked(rows))
+            self.assertEqual(marked(rows), by_level.get(label, 0))
+            # Class counts stay run-wide.
+            for c in "ABCDE":
+                self.assertEqual(stats[f"case_{c}_count"],
+                                 all_stats[f"case_{c}_count"])
+            checked.append(f"{label}:{marked(rows)}/{len(rows)}")
+        self.assertEqual(by_level.get("D0", 0) + by_level.get("D1", 0), 0)
+        self.assertGreater(by_level.get("D2", 0) + by_level.get("D3", 0), 0)
+        self.note(f"HYP-001/rows {', '.join(checked)}; "
+                  f"all levels {all_stats['hypothesis_001_count']}")
 
 
 # ======================================================================
