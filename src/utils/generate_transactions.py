@@ -23,7 +23,7 @@ pinned down by a formula in the public data ``(z, r, s)`` alone.  When it is,
 Every signature gets at most one class: E when the half-difference split
 holds, otherwise A, B, C or D when the auxiliary ``a`` is valid, otherwise none
 ("unclassified").  The class counts of a report therefore add up to the number
-of signatures.
+of signatures (with --d-case-digit N they cover level N only).
 
 The LABELS are computed from the secret split and are research annotations;
 an attacker cannot evaluate them.  The recovery FORMULAS use public data only:
@@ -695,6 +695,10 @@ def _write_report(
             fh.write(f"{header_line}\n")
 
         fh.write("\nStatistics:\n\n")
+        if "selected_group" in stats:
+            # --d-case-digit: the counters below cover this group only; the
+            # key, transaction and signature-space lines describe the run.
+            fh.write(f"Selected Group: {stats['selected_group']}\n")
         for key in STATS_ORDER:
             fh.write(f"{key.replace('_', ' ').title()}: {stats.get(key, 0)}\n")
 
@@ -848,12 +852,13 @@ def _collect_rows(
             # check decisive (x*G == Q), so a twin key can never be reported.
             keys, attempts = recover_signature(ec, analysis, s, s_zr, z, r_x, public_key)
             # --d-case-digit selects one case-D level: only its rows are
-            # printed and only its signatures can be flagged by a hypothesis,
-            # so "Hypothesis 001 Count" equals the HYP-001 marks in the rows
-            # (up to --output-count).  The class counts stay run-wide.
+            # printed and only its signatures enter the statistics block
+            # (class, level, unclassified, hypothesis and recovery counters),
+            # so the block describes exactly the selected group.
             in_group = _in_d_group(analysis, d_case_digit)
-            run_stats.add(analysis.cls, keys, attempts, analysis.level,
-                          analysis.hypothesis if in_group else "-")
+            if in_group:
+                run_stats.add(analysis.cls, keys, attempts, analysis.level,
+                              analysis.hypothesis)
 
             case = analysis.case
             if case is None:              # unclassified: counted, not printed
@@ -910,6 +915,8 @@ def _collect_rows(
         "signature_space_per_key": _format_count(space.per_key),
         "signature_space_all_keys": _format_count(space.all_keys),
     }
+    if d_case_digit != -1:
+        stats["selected_group"] = f"D{d_case_digit}"
     stats.update(run_stats.as_dict())
     stats["spent_time_sec"] = elapsed
     return rows, stats
@@ -1062,9 +1069,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--output-count", type=int, default=1000,
                    help="Maximum rows printed per case")
     p.add_argument("--d-case-digit", type=int, default=-1,
-                   help="Print only this case-D level (-1 = all classes and levels). Rows of "
-                        "other classes and levels are not printed and are never "
-                        "flagged by a hypothesis; the class counts stay run-wide.")
+                   help="Report only this case-D level (-1 = all classes and levels). Rows "
+                        "and all case, unclassified, hypothesis and recovery "
+                        "counters cover the selected level only.")
     p.add_argument("--min-start-range", type=int, default=100,
                    help="Lower bound for test-mode z and k, and for drawn keys "
                         "(both modes)")
