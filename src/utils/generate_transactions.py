@@ -788,6 +788,17 @@ def _build_message(
     )
 
 
+def _in_d_group(analysis: SignatureAnalysis, d_case_digit: int) -> bool:
+    """True when the signature belongs to the group selected by --d-case-digit.
+
+    ``-1`` selects every signature; ``N >= 0`` selects case-D level ``N`` only,
+    so signatures of classes A, B, C, E and of other D levels are outside it.
+    """
+    if d_case_digit == -1:
+        return True
+    return analysis.cls == "D" and analysis.level == d_case_digit
+
+
 def _collect_rows(
     ec: Secp256k1,
     cfg: ReportConfig,
@@ -836,11 +847,18 @@ def _collect_rows(
             # Recovery uses public data only; the public key makes the final
             # check decisive (x*G == Q), so a twin key can never be reported.
             keys, attempts = recover_signature(ec, analysis, s, s_zr, z, r_x, public_key)
+            # --d-case-digit selects one case-D level: only its rows are
+            # printed and only its signatures can be flagged by a hypothesis,
+            # so "Hypothesis 001 Count" equals the HYP-001 marks in the rows
+            # (up to --output-count).  The class counts stay run-wide.
+            in_group = _in_d_group(analysis, d_case_digit)
             run_stats.add(analysis.cls, keys, attempts, analysis.level,
-                          analysis.hypothesis)
+                          analysis.hypothesis if in_group else "-")
 
             case = analysis.case
             if case is None:              # unclassified: counted, not printed
+                continue
+            if not in_group:              # outside the selected D level
                 continue
 
             # ---------- case E row -----------------------------------
@@ -857,7 +875,7 @@ def _collect_rows(
             a = analysis.a
             if case == "D":
                 level = analysis.level
-                if printed["D"] >= output_count or d_case_digit not in (-1, level):
+                if printed["D"] >= output_count:
                     continue
                 printed["D"] += 1
                 rows.append([
@@ -1044,7 +1062,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--output-count", type=int, default=1000,
                    help="Maximum rows printed per case")
     p.add_argument("--d-case-digit", type=int, default=-1,
-                   help="Print only this case-D level (-1 = all). Filters printing, not counting.")
+                   help="Print only this case-D level (-1 = all classes and levels). Rows of "
+                        "other classes and levels are not printed and are never "
+                        "flagged by a hypothesis; the class counts stay run-wide.")
     p.add_argument("--min-start-range", type=int, default=100,
                    help="Lower bound for test-mode z and k, and for drawn keys "
                         "(both modes)")
@@ -1091,6 +1111,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         raise ValueError("--tx-per-key must be >= 1")
     if args.output_count < 0:
         raise ValueError("--output-count must be >= 0")
+    if args.d_case_digit < -1:
+        raise ValueError("--d-case-digit must be -1 (all) or a level >= 0")
     if not 1 <= args.min_start_range < curve.n:
         raise ValueError("--min-start-range must be in [1, n-1]")
 
