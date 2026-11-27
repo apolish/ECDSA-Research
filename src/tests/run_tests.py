@@ -473,7 +473,7 @@ class TestRecovery(ResearchTestCase):
 
 
     def test_d_case_digit_scopes_rows_and_hypothesis(self):
-        """--d-case-digit prints one D level; HYP-001 count = marked rows"""
+        """--d-case-digit: rows and every statistic cover one D level only"""
         def run(digit):
             return _collect_rows(
                 ec=Secp256k1(TEST_PARAMS, rng=random.Random(21)),
@@ -491,6 +491,8 @@ class TestRecovery(ResearchTestCase):
             return sum(1 for row in rows if row[-1] == "HYP-001")
 
         all_rows, all_stats = run(-1)
+        self.assertNotIn("selected_group", all_stats)
+        self.assertGreater(all_stats["case_C_count"], 0)
         self.assertEqual(all_stats["hypothesis_001_count"], marked(all_rows))
         self.assertGreater(all_stats["hypothesis_001_count"], 0)
         by_level: Dict[str, int] = {}
@@ -506,13 +508,26 @@ class TestRecovery(ResearchTestCase):
             # Only the selected group is printed: no A/B/C/E or other D level.
             self.assertEqual({row[0] for row in rows}, {label})
             self.assertEqual(len(rows), stats["case_D_level_counts"][digit])
-            # The counter is scoped to the group and agrees with the rows.
+            # The hypothesis counter agrees with the rows.
             self.assertEqual(stats["hypothesis_001_count"], marked(rows))
             self.assertEqual(marked(rows), by_level.get(label, 0))
-            # Class counts stay run-wide.
-            for c in "ABCDE":
-                self.assertEqual(stats[f"case_{c}_count"],
-                                 all_stats[f"case_{c}_count"])
+            # Every counter covers the selected group only.
+            self.assertEqual(stats["selected_group"], label)
+            self.assertEqual(stats["case_D_level_counts"], {digit: len(rows)})
+            self.assertEqual(stats["case_D_count"], len(rows))
+            self.assertEqual(stats["total_observed_cases"], len(rows))
+            self.assertEqual(len(rows), all_stats["case_D_level_counts"][digit])
+            for key in ("case_A_count", "case_B_count", "case_C_count",
+                        "case_E_count", "unclassified_count",
+                        "recovery_attempts", "recovery_verified",
+                        "recovery_rejected"):
+                self.assertEqual(stats[key], 0, key)
+            for c in "abe":
+                self.assertEqual(stats[f"recovery_attempts_{c}"], 0)
+                self.assertEqual(stats[f"recovery_verified_{c}"], 0)
+            # The run itself is the same: same keys, same transactions.
+            self.assertEqual(stats["total_transaction_count"],
+                             all_stats["total_transaction_count"])
             checked.append(f"{label}:{marked(rows)}/{len(rows)}")
         self.assertEqual(by_level.get("D0", 0) + by_level.get("D1", 0), 0)
         self.assertGreater(by_level.get("D2", 0) + by_level.get("D3", 0), 0)
